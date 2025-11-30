@@ -18,7 +18,7 @@ class OptimisationService
      * @param int $maxSuggestions Nombre maximum de suggestions (défaut: 5)
      * @return array Tableau de suggestions avec seat_number, score et reason
      */
-    public function getSuggestedSeats(string $tripId, string $destinationStopId, int $maxSuggestions = 5): array
+    public function getSuggestedSeats(string $tripId, string $destinationStopId, int $maxSuggestions = 5, ?string $boardingStopId = null): array
     {
         $trip = Trip::with(['vehicle.vehicleType', 'route.routeStopOrders'])->findOrFail($tripId);
         
@@ -27,34 +27,90 @@ class OptimisationService
             return [];
         }
 
-        // Récupérer les sièges déjà occupés
-        $occupiedSeats = Ticket::where('trip_id', $tripId)
+        // Récupérer les sièges déjà occupés avec leurs destinations et origines
+        $occupiedSeatsData = Ticket::where('trip_id', $tripId)
             ->where('status', '!=', 'cancelled')
-            ->pluck('seat_number')
-            ->toArray();
+            ->with(['toStop', 'fromStop'])
+            ->get()
+            ->keyBy('seat_number');
 
         // Récupérer la configuration du véhicule
         $vehicleType = $trip->vehicle->vehicleType;
         $totalSeats = $vehicleType->seat_count;
         $doorPositions = $vehicleType->door_positions ?? [0];
         
-        // Calculer l'index de l'arrêt de destination (plus l'index est petit, plus c'est proche)
+        // Calculer l'index de l'arrêt de destination
         $destinationIndex = $this->getStopIndex($trip->route_id, $destinationStopId);
         
-        // Calculer le score pour chaque siège disponible
-        $seatScores = [];
-        for ($seatNumber = 1; $seatNumber <= $totalSeats; $seatNumber++) {
-            // Ignorer les sièges occupés
-            if (in_array($seatNumber, $occupiedSeats)) {
-                continue;
+        // Get boarding stop index (for semi-intelligent mode)
+        $boardingIndex = $boardingStopId ? $this->getStopIndex($trip->route_id, $boardingStopId) : 0;
+        
+        // Get total stops on route
+        $totalStops = RouteStopOrder::where('route_id', $trip->route_id)->count();
+        
+        // Calculate trip distance ratio (0 = first stop, 1 = last stop)
+        $tripDistanceRatio = $totalStops > 1 ? $destinationIndex / ($totalStops - 1) : 0;
+        
+        // Define tronçons (route segments) based on total stops
+        // Short: 0-33%, Medium: 33-66%, Long: 66-100%
+        $troncon = 'long'; // default
+        if ($tripDistanceRatio <= 0.33) {
+            $troncon = 'short';
+        } elseif ($tripDistanceRatio <= 0.66) {
+            $troncon = 'medium';
+        }
+        
+        // Create zones around each door
+        // Each door has a "near zone" (within 5 seats) and "far zone" (beyond 5 seats)
+        $seatZones = $this->createDoorBasedZones($totalSeats, $doorPositions);
+        
+        // Determine available seats based on booking type
+        $availableSeats = [];
+        
+        if ($trip->isSemiIntelligent()) {
+            // SEMI-INTELLIGENT MODE: Seats can be reused
+            // A seat is available if:
+            // 1. It's completely empty, OR
+            // 2. It's occupied by someone who will disembark BEFORE the new passenger boards
+            
+            for ($seatNumber = 1; $seatNumber <= $totalSeats; $seatNumber++) {
+                if (!$occupiedSeatsData->has($seatNumber)) {
+                    // Seat is completely empty
+                    $availableSeats[] = $seatNumber;
+                } else {
+                    // Seat is occupied - check if it will be free when new passenger boards
+                    $currentOccupant = $occupiedSeatsData[$seatNumber];
+                    $occupantDestIndex = $this->getStopIndex($trip->route_id, $currentOccupant->to_stop_id);
+                    
+                    // If current occupant gets off before or at the boarding stop, seat will be available
+                    if ($occupantDestIndex < $boardingIndex) {
+                        $availableSeats[] = $seatNumber;
+                    }
+                }
             }
-
-            $score = $this->calculateSeatScore(
+        } else {
+            // INTELLIGENT MODE (seat_assignment): Standard logic - only truly empty seats
+            for ($seatNumber = 1; $seatNumber <= $totalSeats; $seatNumber++) {
+                if (!$occupiedSeatsData->has($seatNumber)) {
+                    $availableSeats[] = $seatNumber;
+                }
+            }
+        }
+        
+        // Calculate scores for available seats
+        $seatScores = [];
+        foreach ($availableSeats as $seatNumber) {
+            $score = $this->calculateTronconBasedScore(
                 $seatNumber,
+                $troncon,
                 $destinationIndex,
+                $seatZones,
                 $doorPositions,
                 $totalSeats,
-                $vehicleType->seat_configuration
+                $vehicleType->seat_configuration,
+                $occupiedSeatsData,
+                $trip->route_id,
+                $boardingIndex
             );
 
             $seatScores[] = [
@@ -70,6 +126,198 @@ class OptimisationService
         });
 
         return array_slice($seatScores, 0, $maxSuggestions);
+    }
+
+    /**
+     * Create zones around each door
+     * Returns array with 'nearest_door', 'distance_to_door', and 'zone_type' for each seat
+     */
+    private function createDoorBasedZones(int $totalSeats, array $doorPositions): array
+    {
+        $zones = [];
+        
+        for ($seatNumber = 1; $seatNumber <= $totalSeats; $seatNumber++) {
+            $minDistance = PHP_INT_MAX;
+            $nearestDoor = null;
+            
+            // Find nearest door for this seat
+            foreach ($doorPositions as $doorPosition) {
+                $effectiveDoorPos = $doorPosition === 0 ? 1 : $doorPosition;
+                $distance = abs($seatNumber - $effectiveDoorPos);
+                
+                if ($distance < $minDistance) {
+                    $minDistance = $distance;
+                    $nearestDoor = $effectiveDoorPos;
+                }
+            }
+            
+            // Classify zone based on distance to nearest door
+            $zoneType = 'far'; // default
+            if ($minDistance <= 3) {
+                $zoneType = 'very_near'; // Within 3 seats of door
+            } elseif ($minDistance <= 6) {
+                $zoneType = 'near'; // Within 6 seats of door
+            } elseif ($minDistance <= 10) {
+                $zoneType = 'medium'; // Within 10 seats of door
+            }
+            
+            $zones[$seatNumber] = [
+                'nearest_door' => $nearestDoor,
+                'distance_to_door' => $minDistance,
+                'zone_type' => $zoneType
+            ];
+        }
+        
+        return $zones;
+    }
+
+    /**
+     * Calculate seat score based on tronçon (route segment) and door proximity
+     */
+    private function calculateTronconBasedScore(
+        int $seatNumber,
+        string $troncon,
+        int $destinationIndex,
+        array $seatZones,
+        array $doorPositions,
+        int $totalSeats,
+        string $configuration,
+        Collection $occupiedSeatsData,
+        string $routeId,
+        int $boardingIndex = 0
+    ): array {
+        $score = 100;
+        $reason = '';
+
+        $zone = $seatZones[$seatNumber];
+        $zoneType = $zone['zone_type'];
+        $distanceToDoor = $zone['distance_to_door'];
+
+        // TRONÇON-BASED SCORING
+        // Short trips: MUST be near doors (any door)
+        // Medium trips: Can be medium distance from doors
+        // Long trips: Can be far from doors (back of bus)
+        
+        if ($troncon === 'short') {
+            // Short trip: Prioritize seats very close to ANY door
+            if ($zoneType === 'very_near') {
+                $score += 120; // Highest priority
+                $reason = 'Très proche de la porte - optimal pour trajet court';
+            } elseif ($zoneType === 'near') {
+                $score += 80;
+                $reason = 'Proche de la porte - bon pour trajet court';
+            } elseif ($zoneType === 'medium') {
+                $score += 20;
+                $reason = 'Distance moyenne de la porte';
+            } else {
+                $score -= 60; // Heavy penalty for being far from door
+                $reason = 'Loin de la porte - non optimal pour trajet court';
+            }
+            
+        } elseif ($troncon === 'medium') {
+            // Medium trip: Prefer near to medium zones
+            if ($zoneType === 'very_near') {
+                $score += 60;
+                $reason = 'Proche de la porte - bon pour trajet moyen';
+            } elseif ($zoneType === 'near') {
+                $score += 80; // Best for medium
+                $reason = 'Bonne distance de la porte pour trajet moyen';
+            } elseif ($zoneType === 'medium') {
+                $score += 60;
+                $reason = 'Position acceptable pour trajet moyen';
+            } else {
+                $score += 10;
+                $reason = 'Position arrière pour trajet moyen';
+            }
+            
+        } else { // long trip
+            // Long trip: Prefer far zones (back of bus), away from door traffic
+            if ($zoneType === 'very_near') {
+                $score += 10;
+                $reason = 'Proche porte - plus de passage';
+            } elseif ($zoneType === 'near') {
+                $score += 30;
+                $reason = 'Position acceptable pour trajet long';
+            } elseif ($zoneType === 'medium') {
+                $score += 70;
+                $reason = 'Bonne position pour trajet long';
+            } else {
+                $score += 100; // Best for long trips
+                $reason = 'Position arrière - optimal pour trajet long';
+            }
+        }
+
+        // Check if this seat would block passengers who disembark before us
+        $wouldBlockPassengers = false;
+        $seatType = $this->getSeatType($seatNumber, $configuration, $totalSeats);
+        
+        if ($seatType === 'window') {
+            // Check if aisle seat next to us is occupied by someone leaving earlier
+            $aisleSeats = $this->getAdjacentAisleSeats($seatNumber, $configuration, $totalSeats);
+            foreach ($aisleSeats as $aisleSeat) {
+                if ($occupiedSeatsData->has($aisleSeat)) {
+                    $occupantDestIndex = $this->getStopIndex($routeId, $occupiedSeatsData[$aisleSeat]->to_stop_id);
+                    if ($occupantDestIndex < $destinationIndex) {
+                        $wouldBlockPassengers = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if ($wouldBlockPassengers) {
+            $score -= 100; // Heavy penalty for blocking
+            $reason = 'Bloquerait un passager qui descend avant vous';
+        }
+
+        // Seat type bonus (aisle is generally better for easy exit)
+        if ($seatType === 'aisle') {
+            $score += 20;
+        } elseif ($seatType === 'window') {
+            $score += 5;
+        }
+
+        return [
+            'score' => round($score, 2),
+            'reason' => $reason
+        ];
+    }
+
+    /**
+     * Get adjacent aisle seats for a window seat
+     */
+    private function getAdjacentAisleSeats(int $seatNumber, string $configuration, int $totalSeats): array
+    {
+        $parts = array_map('intval', explode('+', $configuration));
+        $seatsPerRow = array_sum($parts);
+        
+        if ($seatsPerRow == 0) return [];
+
+        $colIndex = ($seatNumber - 1) % $seatsPerRow;
+        $rowStart = $seatNumber - $colIndex;
+        
+        $aisleSeats = [];
+        $currentCol = 0;
+        
+        foreach ($parts as $partIndex => $partWidth) {
+            if ($colIndex >= $currentCol && $colIndex < $currentCol + $partWidth) {
+                // Found our block
+                $posInPart = $colIndex - $currentCol;
+                
+                // If we're at the left edge of the block, aisle is to our right
+                if ($posInPart === 0 && $partIndex > 0) {
+                    $aisleSeats[] = $seatNumber + 1;
+                }
+                // If we're at the right edge of the block, aisle is to our left
+                if ($posInPart === $partWidth - 1 && $partIndex < count($parts) - 1) {
+                    $aisleSeats[] = $seatNumber - 1;
+                }
+                break;
+            }
+            $currentCol += $partWidth;
+        }
+        
+        return array_filter($aisleSeats, fn($s) => $s >= 1 && $s <= $totalSeats);
     }
 
     /**

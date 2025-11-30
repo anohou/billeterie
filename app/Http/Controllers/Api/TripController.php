@@ -27,14 +27,21 @@ class TripController extends Controller
     {
         $validated = $request->validate([
             'destination_stop_id' => 'required|uuid|exists:stops,id',
+            'boarding_stop_id' => 'sometimes|uuid|exists:stops,id', // For semi-intelligent mode
             'quantity' => 'sometimes|integer|min:1',
         ]);
 
         $destinationStopId = $validated['destination_stop_id'];
+        $boardingStopId = $validated['boarding_stop_id'] ?? null;
         $quantity = $validated['quantity'] ?? 1;
 
         // Utiliser le service d'optimisation
-        $suggestions = $this->optimisationService->getSuggestedSeats($trip->id, $destinationStopId, $quantity);
+        $suggestions = $this->optimisationService->getSuggestedSeats(
+            $trip->id, 
+            $destinationStopId, 
+            $quantity,
+            $boardingStopId
+        );
         $stats = $this->optimisationService->getTripOccupancyStats($trip->id);
 
         return response()->json([

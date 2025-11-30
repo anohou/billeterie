@@ -35,6 +35,16 @@ class Trip extends Model
         return $this->booking_type === 'bulk';
     }
 
+    /**
+     * Vérifie si le voyage est en mode semi-intelligent (réutilisation des sièges)
+     * Permet de vendre des tickets pour des trajets différents en réutilisant les sièges
+     * qui se libèrent aux arrêts intermédiaires
+     */
+    public function isSemiIntelligent(): bool
+    {
+        return $this->booking_type === 'semi_intelligent';
+    }
+
     protected static function booted(): void
     {
         static::creating(function (self $model): void {
