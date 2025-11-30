@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600">
+  <!-- Minibus 15 places - Configuration 2+1 - 1 porte avant -->
+  
+  <!-- Fond du véhicule -->
+  <rect x="50" y="50" width="300" height="500" fill="#e0e0e0" stroke="#333" stroke-width="3" rx="20"/>
+  
+  <!-- Porte avant (position 1) -->
+  <rect x="50" y="80" width="40" height="60" fill="#ff6b6b" stroke="#333" stroke-width="2"/>
+  <text x="70" y="115" text-anchor="middle" font-size="12" fill="white" font-weight="bold">PORTE</text>
+  
+  <!-- Cabine conducteur -->
+  <rect x="100" y="60" width="200" height="50" fill="#4a4a4a" stroke="#333" stroke-width="2"/>
+  <text x="200" y="90" text-anchor="middle" font-size="14" fill="white">CONDUCTEUR</text>
+  
+  <!-- Allée centrale -->
+  <rect x="190" y="140" width="20" height="380" fill="#b0b0b0" stroke="#999" stroke-width="1"/>
+  
+  <!-- Sièges - Configuration 2+1 (5 rangées × 3 sièges = 15 places) -->
+  <!-- Rangée 1 -->
+  <g id="seat-1" class="seat available">
+    <rect x="110" y="150" width="60" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="140" y="180" text-anchor="middle" font-size="16" fill="white" font-weight="bold">1</text>
+  </g>
+  <g id="seat-2" class="seat available">
+    <rect x="220" y="150" width="60" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="250" y="180" text-anchor="middle" font-size="16" fill="white" font-weight="bold">2</text>
+  </g>
+  <g id="seat-3" class="seat available">
+    <rect x="290" y="150" width="50" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="315" y="180" text-anchor="middle" font-size="16" fill="white" font-weight="bold">3</text>
+  </g>
+  
+  <!-- Rangée 2 -->
+  <g id="seat-4" class="seat available">
+    <rect x="110" y="220" width="60" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="140" y="250" text-anchor="middle" font-size="16" fill="white" font-weight="bold">4</text>
+  </g>
+  <g id="seat-5" class="seat available">
+    <rect x="220" y="220" width="60" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="250" y="250" text-anchor="middle" font-size="16" fill="white" font-weight="bold">5</text>
+  </g>
+  <g id="seat-6" class="seat available">
+    <rect x="290" y="220" width="50" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="315" y="250" text-anchor="middle" font-size="16" fill="white" font-weight="bold">6</text>
+  </g>
+  
+  <!-- Rangée 3 -->
+  <g id="seat-7" class="seat available">
+    <rect x="110" y="290" width="60" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="140" y="320" text-anchor="middle" font-size="16" fill="white" font-weight="bold">7</text>
+  </g>
+  <g id="seat-8" class="seat available">
+    <rect x="220" y="290" width="60" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="250" y="320" text-anchor="middle" font-size="16" fill="white" font-weight="bold">8</text>
+  </g>
+  <g id="seat-9" class="seat available">
+    <rect x="290" y="290" width="50" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="315" y="320" text-anchor="middle" font-size="16" fill="white" font-weight="bold">9</text>
+  </g>
+  
+  <!-- Rangée 4 -->
+  <g id="seat-10" class="seat available">
+    <rect x="110" y="360" width="60" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="140" y="390" text-anchor="middle" font-size="16" fill="white" font-weight="bold">10</text>
+  </g>
+  <g id="seat-11" class="seat available">
+    <rect x="220" y="360" width="60" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="250" y="390" text-anchor="middle" font-size="16" fill="white" font-weight="bold">11</text>
+  </g>
+  <g id="seat-12" class="seat available">
+    <rect x="290" y="360" width="50" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="315" y="390" text-anchor="middle" font-size="16" fill="white" font-weight="bold">12</text>
+  </g>
+  
+  <!-- Rangée 5 -->
+  <g id="seat-13" class="seat available">
+    <rect x="110" y="430" width="60" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="140" y="460" text-anchor="middle" font-size="16" fill="white" font-weight="bold">13</text>
+  </g>
+  <g id="seat-14" class="seat available">
+    <rect x="220" y="430" width="60" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="250" y="460" text-anchor="middle" font-size="16" fill="white" font-weight="bold">14</text>
+  </g>
+  <g id="seat-15" class="seat available">
+    <rect x="290" y="430" width="50" height="50" fill="#4CAF50" stroke="#333" stroke-width="2" rx="5"/>
+    <text x="315" y="460" text-anchor="middle" font-size="16" fill="white" font-weight="bold">15</text>
+  </g>
+  
+  <!-- Légende -->
+  <text x="200" y="570" text-anchor="middle" font-size="14" font-weight="bold">Minibus 15 places (2+1)</text>
+  
+  <style>
+    .seat { cursor: pointer; }
+    .seat.available rect { fill: #4CAF50; }
+    .seat.occupied rect { fill: #f44336; }
+    .seat.selected rect { fill: #2196F3; }
+    .seat.suggested rect { fill: #FFC107; animation: pulse 1s infinite; }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    
+    .seat:hover rect { stroke: #000; stroke-width: 3; }
+  </style>
+</svg>

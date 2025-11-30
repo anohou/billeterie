@@ -1,0 +1,46 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+
+class Vehicle extends Model
+{
+    use HasUuids;
+    
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'identifier',
+        'maker',
+        'vehicle_type_id',
+        'seat_count',
+        'door_positions',
+    ];
+
+    protected $casts = [
+        'door_positions' => 'array',
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $model): void {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function trips()
+    {
+        return $this->hasMany(Trip::class);
+    }
+
+    public function vehicleType()
+    {
+        return $this->belongsTo(VehicleType::class);
+    }
+}

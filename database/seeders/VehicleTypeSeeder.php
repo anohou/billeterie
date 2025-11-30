@@ -1,0 +1,107 @@
+<?php
+
+namespace Database\Seeders;
+
+use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use Illuminate\Database\Seeder;
+
+class VehicleTypeSeeder extends Seeder
+{
+    /**
+     * Run the database seeds.
+     */
+    public function run(): void
+    {
+        $vehicleTypes = [
+            [
+                'name' => 'Minibus 15 places',
+                'seat_count' => 15,
+                'seat_configuration' => '2+1',
+                'door_count' => 1,
+                'door_positions' => [1], // Porte à l'avant
+                'svg_template_path' => 'minibus_15',
+                'seat_map' => $this->generateSeatMap(15, '2+1'),
+            ],
+            [
+                'name' => 'Bus 30 places',
+                'seat_count' => 30,
+                'seat_configuration' => '2+2',
+                'door_count' => 2,
+                'door_positions' => [1, 16], // Portes avant et milieu
+                'svg_template_path' => 'bus_30',
+                'seat_map' => $this->generateSeatMap(30, '2+2'),
+            ],
+            [
+                'name' => 'Bus 50 places',
+                'seat_count' => 41,
+                'seat_configuration' => '2+2',
+                'door_count' => 2,
+                'door_positions' => [1, 23], // Porte avant (1) et porte milieu (23-24 combined)
+                'svg_template_path' => 'bus_50',
+                'seat_map' => (function() {
+                    $map = [];
+                    $seatNum = 1;
+                    // 9 rows of 4 seats
+                    for ($row = 1; $row <= 9; $row++) {
+                        $rowSeats = [];
+                        for ($col = 1; $col <= 4; $col++) {
+                            $rowSeats[] = ['number' => $seatNum++, 'row' => $row, 'col' => $col];
+                        }
+                        $map[] = $rowSeats;
+                    }
+                    // Last row (Row 10) with 5 seats
+                    $lastRow = [];
+                    for ($col = 1; $col <= 5; $col++) {
+                        $lastRow[] = ['number' => $seatNum++, 'row' => 10, 'col' => $col];
+                    }
+                    $map[] = $lastRow;
+                    return $map;
+                })(),
+            ],
+            [
+                'name' => 'Bus Articulé 80 places',
+                'seat_count' => 80,
+                'seat_configuration' => '2+2',
+                'door_count' => 3,
+                'door_positions' => [1, 35, 65], // Portes avant, milieu et arrière
+                'svg_template_path' => 'bus_articule_80',
+                'seat_map' => $this->generateSeatMap(80, '2+2'),
+            ],
+        ];
+
+        foreach ($vehicleTypes as $vehicleType) {
+            \App\Models\VehicleType::updateOrCreate(
+                ['name' => $vehicleType['name']],
+                $vehicleType
+            );
+        }
+    }
+
+    /**
+     * Génère un plan de sièges basique pour un véhicule
+     */
+    private function generateSeatMap(int $seatCount, string $configuration): array
+    {
+        $seatsPerRow = array_sum(array_map('intval', explode('+', $configuration)));
+        $rows = ceil($seatCount / $seatsPerRow);
+        $seatMap = [];
+        $seatNumber = 1;
+
+        for ($row = 0; $row < $rows; $row++) {
+            $rowSeats = [];
+            for ($col = 0; $col < $seatsPerRow && $seatNumber <= $seatCount; $col++) {
+                $rowSeats[] = [
+                    'number' => $seatNumber,
+                    'row' => $row + 1,
+                    'col' => $col + 1,
+                ];
+                $seatNumber++;
+            }
+            if (!empty($rowSeats)) {
+                $seatMap[] = $rowSeats;
+            }
+        }
+
+        return $seatMap;
+    }
+}

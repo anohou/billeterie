@@ -1,0 +1,48 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+
+class Station extends Model
+{
+    use HasUuids;
+    
+    public $incrementing = false;
+    protected $keyType = 'string';
+
+    protected $fillable = [
+        'name', 'code', 'city', 'address', 'phone', 'active', 'latitude', 'longitude',
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $model): void {
+            if (empty($model->id)) {
+                $model->id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function stops()
+    {
+        return $this->hasMany(Stop::class);
+    }
+
+    public function users()
+    {
+        return $this->hasMany(User::class);
+    }
+
+    public function originRoutes()
+    {
+        return $this->hasMany(Route::class, 'origin_station_id');
+    }
+
+    public function destinationRoutes()
+    {
+        return $this->hasMany(Route::class, 'destination_station_id');
+    }
+}

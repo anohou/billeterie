@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="500" height="800" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 800">
+  <!-- Bus 70 places - Configuration 3+2 - 3 portes -->
+  
+  <!-- Fond du véhicule -->
+  <rect x="50" y="50" width="400" height="700" fill="#e0e0e0" stroke="#333" stroke-width="3" rx="20"/>
+  
+  <!-- Porte avant (position 1) -->
+  <rect x="50" y="100" width="40" height="60" fill="#ff6b6b" stroke="#333" stroke-width="2"/>
+  <text x="70" y="135" text-anchor="middle" font-size="10" fill="white" font-weight="bold">P1</text>
+  
+  <!-- Porte milieu (position 30) -->
+  <rect x="50" y="380" width="40" height="60" fill="#ff6b6b" stroke="#333" stroke-width="2"/>
+  <text x="70" y="415" text-anchor="middle" font-size="10" fill="white" font-weight="bold">P2</text>
+  
+  <!-- Porte arrière (position 55) -->
+  <rect x="50" y="620" width="40" height="60" fill="#ff6b6b" stroke="#333" stroke-width="2"/>
+  <text x="70" y="655" text-anchor="middle" font-size="10" fill="white" font-weight="bold">P3</text>
+  
+  <!-- Cabine conducteur -->
+  <rect x="100" y="60" width="300" height="50" fill="#4a4a4a" stroke="#333" stroke-width="2"/>
+  <text x="250" y="90" text-anchor="middle" font-size="14" fill="white">CONDUCTEUR</text>
+  
+  <!-- Allée centrale -->
+  <rect x="280" y="120" width="30" height="600" fill="#b0b0b0" stroke="#999" stroke-width="1"/>
+  
+  <!-- Sièges - Configuration 3+2 (14 rangées × 5 sièges = 70 places) -->
+  <!-- Génération des 70 sièges en 14 rangées -->
+  <!-- Rangées 1-14, chaque rangée: 3 sièges gauche + allée + 2 sièges droite -->
+  
+  <!-- Rangée 1 (sièges 1-5) -->
+  <g id="seat-1" class="seat"><rect x="110" y="130" width="45" height="35" fill="#4CAF50" stroke="#333" stroke-width="1.5" rx="3"/><text x="132" y="152" text-anchor="middle" font-size="12" fill="white" font-weight="bold">1</text></g>
+  <g id="seat-2" class="seat"><rect x="165" y="130" width="45" height="35" fill="#4CAF50" stroke="#333" stroke-width="1.5" rx="3"/><text x="187" y="152" text-anchor="middle" font-size="12" fill="white" font-weight="bold">2</text></g>
+  <g id="seat-3" class="seat"><rect x="220" y="130" width="45" height="35" fill="#4CAF50" stroke="#333" stroke-width="1.5" rx="3"/><text x="242" y="152" text-anchor="middle" font-size="12" fill="white" font-weight="bold">3</text></g>
+  <g id="seat-4" class="seat"><rect x="320" y="130" width="55" height="35" fill="#4CAF50" stroke="#333" stroke-width="1.5" rx="3"/><text x="347" y="152" text-anchor="middle" font-size="12" fill="white" font-weight="bold">4</text></g>
+  <g id="seat-5" class="seat"><rect x="385" y="130" width="55" height="35" fill="#4CAF50" stroke="#333" stroke-width="1.5" rx="3"/><text x="412" y="152" text-anchor="middle" font-size="12" fill="white" font-weight="bold">5</text></g>
+  
+  <!-- Rangées 2-14 (sièges 6-70) - Simplifié pour l'exemple -->
+  <!-- En production, générer dynamiquement ou répéter le pattern -->
+  
+  <!-- Légende -->
+  <text x="250" y="770" text-anchor="middle" font-size="14" font-weight="bold">Bus 70 places (3+2) - 3 portes</text>
+  
+  <style>
+    .seat { cursor: pointer; }
+    .seat rect { fill: #4CAF50; }
+    .seat.occupied rect { fill: #f44336; }
+    .seat.selected rect { fill: #2196F3; }
+    .seat.suggested rect { fill: #FFC107; animation: pulse 1s infinite; }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    
+    .seat:hover rect { stroke: #000; stroke-width: 2.5; }
+  </style>
+</svg>

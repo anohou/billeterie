@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="450" height="850" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 850">
+  <rect x="50" y="50" width="350" height="750" fill="#e0e0e0" stroke="#333" stroke-width="3" rx="20"/>
+  <rect x="50" y="100" width="40" height="60" fill="#ff6b6b" stroke="#333" stroke-width="2"/><text x="70" y="135" text-anchor="middle" font-size="10" fill="white" font-weight="bold">P1</text>
+  <rect x="50" y="380" width="40" height="60" fill="#ff6b6b" stroke="#333" stroke-width="2"/><text x="70" y="415" text-anchor="middle" font-size="10" fill="white" font-weight="bold">P2</text>
+  <rect x="50" y="660" width="40" height="60" fill="#ff6b6b" stroke="#333" stroke-width="2"/><text x="70" y="695" text-anchor="middle" font-size="10" fill="white" font-weight="bold">P3</text>
+  <rect x="100" y="60" width="280" height="50" fill="#4a4a4a" stroke="#333" stroke-width="2"/><text x="240" y="90" text-anchor="middle" font-size="14" fill="white">CONDUCTEUR</text>
+  <rect x="240" y="120" width="30" height="650" fill="#b0b0b0" stroke="#999" stroke-width="1"/>
+  <text x="225" y="820" text-anchor="middle" font-size="14" font-weight="bold">Bus 70 places (2+2) - 3 portes</text>
+  <style>.seat{cursor:pointer}.seat rect{fill:#4CAF50}.seat.occupied rect{fill:#f44336}.seat.selected rect{fill:#2196F3}.seat.suggested rect{fill:#FFC107;animation:pulse 1s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}.seat:hover rect{stroke:#000;stroke-width:2.5}</style>
+</svg>
