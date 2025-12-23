@@ -63,61 +63,35 @@ class SeatAllocator
     
     /**
      * Calculate a composite score for a seat based on multiple factors.
-     *
-     * @param int $seatNumber
-     * @param int $distanceToDoor
-     * @param float $destinationRank (0 = first stop, 1 = last stop)
-     * @param \App\Models\VehicleType $vehicleType
-     * @return float
      */
     private function calculateSeatScore(int $seatNumber, int $distanceToDoor, float $destinationRank, $vehicleType): float
     {
-        $score = 0;
-        
-        // Factor 1: Door proximity (weighted by destination rank)
-        // Early stops (rank < 0.3): High weight on being close to door
-        // Mid stops (0.3-0.7): Moderate weight
-        // Late stops (rank > 0.7): Prefer seats away from door
+        // This is a simplified version. The main logic is in OptimisationService.
+        // For consistency, let's make it behave similarly if used.
+        $score = 100;
         
         if ($destinationRank < 0.3) {
-            // Early stop: closer to door is better (inverse distance)
-            $doorScore = 100 - ($distanceToDoor * 2);
-            $score += $doorScore * 0.8; // 80% weight
-        } elseif ($destinationRank < 0.7) {
-            // Mid stop: balanced approach
-            $doorScore = 50 - abs($distanceToDoor - 10);
-            $score += $doorScore * 0.5; // 50% weight
-        } else {
-            // Late stop: farther from door is better
-            $doorScore = $distanceToDoor * 1.5;
-            $score += $doorScore * 0.7; // 70% weight
-        }
-        
-        // Factor 2: Seat position comfort (prefer middle rows for long trips)
-        $seatCount = $vehicleType->seat_count;
-        $middleSeat = $seatCount / 2;
-        $distanceFromMiddle = abs($seatNumber - $middleSeat);
-        
-        if ($destinationRank > 0.5) {
-            // For longer trips, prefer seats closer to middle
-            $comfortScore = 30 - ($distanceFromMiddle * 0.5);
-            $score += $comfortScore * 0.3; // 30% weight
+            // Short trip: prefer closer to door
+            $score -= ($distanceToDoor * 20);
+        } elseif ($destinationRank > 0.7) {
+            // Long trip: prefer farther from door (quieter)
+            $score += ($distanceToDoor * 10);
         }
         
         return $score;
     }
 
     /**
-     * Calculate the minimum distance from a seat to any door.
-     *
-     * @param int $seatNumber
-     * @param array $doorPositions
-     * @return int
+     * Calculate the minimum distance from a seat to any door using geometric layout.
      */
     private function calculateMinDistanceToDoor(int $seatNumber, array $doorPositions): int
     {
+        // Note: SeatAllocator doesn't have access to the full seat_map in its current signature.
+        // Ideally, we should refactor it to use OptimisationService logic.
+        // For now, let's keep the seat-number based fallback but with a warning.
+        
         if (empty($doorPositions)) {
-            return PHP_INT_MAX; // Return a large number if no doors are defined
+            return PHP_INT_MAX;
         }
 
         $minDistance = PHP_INT_MAX;

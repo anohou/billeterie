@@ -57,6 +57,15 @@ const createTripProcessing = ref(false);
 const showZoomModal = ref(false);
 const autoSelectOptimal = ref(true); // Auto-select optimal seat by default
 const showPassengerFields = ref(false); // Hide passenger fields by default
+const isMobile = ref(window.innerWidth < 768);
+
+// Update isMobile on resize
+onMounted(() => {
+  window.addEventListener('resize', () => {
+    isMobile.value = window.innerWidth < 768;
+  });
+});
+const showTripSelectionModal = ref(false); // Modal for selecting a trip
 
 // Bluetooth Printer state
 const bluetoothPrinter = new BluetoothPrinter();
@@ -115,6 +124,18 @@ const availableFares = computed(() => {
     return props.routeFares.filter(fare => fare.route_id === currentTrip.value.route_id);
 });
 
+// Seat statistics computed from seatMap response
+const seatStats = computed(() => {
+  if (!seatMap.value) {
+    return { total: 0, sold: 0, available: 0 };
+  }
+  // Use the API response fields directly
+  const total = seatMap.value.total_seats || 0;
+  const sold = seatMap.value.occupied_seats || seatMap.value.occupied_seats_count || 0;
+  const available = seatMap.value.available_seats || seatMap.value.available_seats_count || (total - sold);
+  return { total, sold, available };
+});
+
 const totalAmount = computed(() => {
   if (!selectedFare.value) return 0;
   return selectedFare.value.amount;
@@ -132,6 +153,7 @@ const selectTrip = (tripId) => {
   selectedFare.value = null;
   seatMap.value = null;
   suggestedSeats.value = [];
+  showTripSelectionModal.value = false;
 };
 
 const fetchSeatMap = async () => {
@@ -175,7 +197,7 @@ const fetchSeatSuggestions = async () => {
 
 const bookSeat = (seatNumber) => {
   if (!selectedFare.value) {
-    errors.value.general = "Veuillez sélectionner un tronçon avant de réserver un siège.";
+    alert("Veuillez d'abord sélectionner une destination.");
     return;
   }
 
@@ -382,6 +404,9 @@ const createTrip = () => {
 
 // Zoom and Pan methods
 const handleWheel = (event) => {
+  // Disable wheel zoom on mobile - use +/- buttons only
+  if (isMobile.value) return;
+  
   event.preventDefault();
   const delta = event.deltaY > 0 ? -0.1 : 0.1;
   zoomLevel.value = Math.max(0.5, Math.min(3, zoomLevel.value + delta));
@@ -464,161 +489,299 @@ onMounted(async () => {
       // Silently fail - user can manually reconnect
     }
   }
+
+  // Auto-select closest trip
+  if (!selectedTripId.value && props.trips.length > 0) {
+    const now = new Date();
+    const sortedTrips = [...props.trips].sort((a, b) => {
+      const diffA = new Date(a.departure_at) - now;
+      const diffB = new Date(b.departure_at) - now;
+      // Prefer future trips, closest first
+      if (diffA >= 0 && diffB >= 0) return diffA - diffB;
+      // If one is past and one is future, future wins
+      if (diffA >= 0 && diffB < 0) return -1;
+      if (diffA < 0 && diffB >= 0) return 1;
+      // Both are past, most recent first
+      return diffB - diffA;
+    });
+    selectTrip(sortedTrips[0].id);
+  }
 });
 
 </script>
 
 <template>
-  <MainNavLayout>
-    <div class="w-full h-screen flex flex-col overflow-hidden">
+  <MainNavLayout :show-nav="!isMobile">
+    <template #header-actions>
+      <!-- Bluetooth Printer Toggle moved to Header -->
+      <button 
+        @click="toggleBluetoothPrinter" 
+        :class="[
+          'p-2 border rounded-full text-sm font-medium flex items-center justify-center transition-all',
+          useBluetoothPrinter && bluetoothPrinterConnected 
+            ? 'border-blue-500 bg-blue-100 text-blue-700' 
+            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+        ]"
+        :title="bluetoothPrinterConnected ? `Connecté: ${bluetoothPrinterName}` : 'Connecter imprimante Bluetooth'"
+      >
+        <Bluetooth :class="bluetoothPrinterConnected ? 'text-blue-600' : 'text-gray-500'" class="w-5 h-5" />
+      </button>
+    </template>
+
+    <div class="w-full min-h-screen md:h-screen flex flex-col overflow-y-auto md:overflow-hidden bg-gray-100">
       <!-- Main Grid Container -->
-      <div class="flex-1 grid grid-cols-12 gap-4 p-4 min-h-0">
-        <!-- Left Side: Sub-header (3/4) + Content (Voyages 50% + Tronçons 25%) -->
-        <div class="col-span-9 flex flex-col gap-4 min-h-0">
+      <div class="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-4 p-2 md:p-4 min-h-0">
+        <!-- Left Side: Sub-header + Content (Voyages + Tronçons) -->
+        <div class="lg:col-span-8 xl:col-span-9 flex flex-col gap-3 md:gap-4 min-h-0">
           <!-- Sub-header with Title and Buttons -->
-          <div class="bg-gradient-to-r from-green-50 to-orange-50/30 border-b border-orange-200 px-4 py-3 rounded-lg">
+          <div class="bg-gradient-to-r from-green-50 to-orange-50/30 border-b border-orange-200 px-3 py-2 rounded-lg shadow-sm">
             <div class="flex items-center justify-between">
               <div>
-                <h1 class="text-xl font-bold text-green-700">Billetterie</h1>
-                <p class="text-sm text-green-600">Vente de tickets en temps réel</p>
+                <h1 class="text-lg font-bold text-green-700">Billetterie</h1>
+                <p class="text-[10px] text-green-600 hidden sm:block">Vente de tickets en temps réel</p>
               </div>
-              <div class="flex items-center space-x-2">
-                <!-- Bluetooth Printer Toggle -->
-                <button 
-                  @click="toggleBluetoothPrinter" 
-                  :class="[
-                    'px-3 py-1.5 border rounded-md text-sm font-medium flex items-center',
-                    useBluetoothPrinter && bluetoothPrinterConnected 
-                      ? 'border-blue-500 bg-blue-50 text-blue-700' 
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                  ]"
-                  :title="bluetoothPrinterConnected ? `Connecté: ${bluetoothPrinterName}` : 'Connecter imprimante Bluetooth'"
-                >
-                  <Bluetooth :class="bluetoothPrinterConnected ? 'text-blue-600' : 'text-gray-500'" class="w-4 h-4 mr-1" />
-                  {{ bluetoothPrinterConnected ? 'BT' : 'BT' }}
-                </button>
-                
-                <button class="px-3 py-1.5 border border-gray-300 rounded-md bg-white hover:bg-gray-50 text-sm font-medium">
-                  Menu1
-                </button>
-                <button class="px-3 py-1.5 border border-gray-300 rounded-md bg-white hover:bg-gray-50 text-sm font-medium">
-                  Menu2
-                </button>
-                <Link :href="route('seller.ticketing.horizontal')" class="px-3 py-1.5 border border-blue-300 text-blue-700 rounded-md bg-blue-50 hover:bg-blue-100 text-sm font-medium flex items-center" title="Passer en mode horizontal">
-                  <SwapHorizontal />
-                </Link>
-                <button @click="showCreateTripModal = true" class="px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700">
-                  <Calendar class="w-4 h-4 inline mr-1" />
-                  Nouveau Voyage
+              <div class="flex items-center gap-2">
+                <button @click="showCreateTripModal = true" class="px-4 py-2 bg-green-600 text-white text-sm font-bold rounded-lg flex items-center gap-2 shadow-md hover:bg-green-700 active:scale-95 transition-all">
+                  <Calendar class="w-5 h-5" />
+                  <span>Créer un voyage</span>
                 </button>
               </div>
             </div>
           </div>
 
-          <!-- Content Area: Voyages (50%) + Tronçons (25%) -->
-          <div class="flex-1 grid grid-cols-3 gap-4 min-h-0">
-            <!-- Voyages - 2/3 of left area (50% of total) -->
-            <div class="col-span-2 flex flex-col min-h-0">
+          <!-- Content Area: Voyages + Tronçons + Places (on mobile when Auto OFF) -->
+          <div :class="[
+            'flex-1 flex flex-col lg:grid lg:grid-cols-3 gap-3 md:gap-4 min-h-0'
+          ]">
+            <!-- Voyages -->
+            <div class="lg:col-span-2 flex flex-col min-h-0 overflow-hidden">
               <div class="bg-white rounded-lg border border-orange-200 shadow-sm flex flex-col h-full">
-                <div class="px-4 py-3 border-b border-gray-200 bg-green-50">
-                  <h2 class="text-base font-semibold text-green-700 flex items-center mb-2">
-                    <Bus class="mr-2 w-5 h-5" />
-                    Voyages
-                  </h2>
-                  <!-- Search Box -->
-                  <input 
-                    v-model="searchQuery"
-                    type="text"
-                    placeholder="Rechercher par destination..."
-                    class="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  />
-                </div>
-                <div class="flex-1 overflow-y-auto p-3">
-                  <!-- 3-column grid for voyages -->
-                  <div class="grid grid-cols-3 gap-2">
-                    <div v-for="trip in filteredTrips" :key="trip.id"
-                         @click="selectTrip(trip.id)"
-                         :class="[
-                           'p-2 rounded-lg border cursor-pointer transition-colors',
-                           selectedTripId === trip.id 
-                             ? 'border-green-500 bg-green-50' 
-                             : 'border-gray-200 hover:border-orange-300 hover:bg-orange-50'
-                         ]">
-                      <div class="font-semibold text-xs text-gray-900 truncate" :title="trip.route?.name">
-                        {{ trip.route?.name }}
-                      </div>
-                      <div class="text-xs text-gray-600 space-y-0.5 mt-1">
-                        <div class="flex items-center">
-                          <Clock class="w-3 h-3 mr-1 flex-shrink-0" />
-                          <span class="truncate">{{ new Date(trip.departure_at).toLocaleString('fr-FR', {
-                            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-                          }) }}</span>
-                        </div>
-                        <div class="flex items-center">
-                          <Bus class="w-3 h-3 mr-1 flex-shrink-0" />
-                          <span class="truncate">{{ trip.vehicle?.identifier }}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-if="filteredTrips.length === 0" class="text-center text-gray-400 py-8">
-                    <Bus class="w-10 h-10 mx-auto mb-2" />
-                    <p class="text-xs">Aucun voyage trouvé</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Tronçons - 1/3 of left area (25% of total) -->
-            <div class="col-span-1 flex flex-col min-h-0">
-              <div class="bg-white rounded-lg border border-orange-200 shadow-sm flex flex-col h-full">
-                <div class="px-4 py-3 border-b border-gray-200 bg-blue-50">
-                  <div class="flex items-center justify-between">
-                    <h2 class="text-base font-semibold text-blue-700 flex items-center">
-                      <Routes class="mr-2 w-5 h-5" />
-                      Tronçons
+                <div class="px-4 py-3 border-b border-gray-200 bg-green-50 flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <h2 class="text-base font-semibold text-green-700 flex items-center">
+                      <Bus class="mr-2 w-5 h-5" />
+                      Voyage
                     </h2>
-                    <label class="flex items-center gap-1.5 cursor-pointer" title="Sélectionner automatiquement le meilleur siège">
+                    <!-- Auto toggle moved here -->
+                    <label class="flex items-center gap-1.5 cursor-pointer bg-white px-2 py-1 rounded-lg border border-gray-200 shadow-sm">
                       <input 
                         type="checkbox" 
                         v-model="autoSelectOptimal"
                         class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500"
                       />
-                      <span class="text-xs text-gray-700 font-medium">⚡ Optimal</span>
+                      <span class="text-xs text-gray-700 font-medium">⚡ Auto</span>
                     </label>
                   </div>
+                  <div class="flex items-center gap-2">
+                    <span class="px-2.5 py-1 bg-green-600 text-white rounded-full text-sm font-black shadow-sm">
+                      {{ trips.length }} en cours
+                    </span>
+                    <button 
+                      @click="showTripSelectionModal = true"
+                      class="px-3 py-1 bg-white border border-green-500 text-green-700 rounded-md text-xs font-bold hover:bg-green-50 transition-colors shadow-sm"
+                    >
+                      {{ selectedTripId ? 'Changer' : 'Sélectionner' }}
+                    </button>
+                  </div>
                 </div>
-                <div class="flex-1 overflow-y-auto p-3">
+                <div class="flex-1 p-3 overflow-y-auto">
+                  <!-- Mobile: Show only selected trip -->
+                  <div v-if="isMobile && currentTrip" class="bg-white rounded-xl border border-green-200 p-3 shadow-sm relative overflow-hidden">
+                    <div class="flex items-start justify-between mb-2">
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                          <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0"></div>
+                          <div class="text-[10px] uppercase font-bold text-green-600 tracking-wider">En cours</div>
+                        </div>
+                        <div class="text-base font-black text-gray-900 leading-tight truncate">{{ currentTrip.route?.name }}</div>
+                      </div>
+                      <div class="text-right shrink-0 ml-3">
+                        <div class="text-xl font-black text-gray-900">
+                          {{ new Date(currentTrip.departure_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) }}
+                        </div>
+                        <div class="text-[10px] text-gray-500">{{ currentTrip.vehicle?.identifier }}</div>
+                      </div>
+                    </div>
+                    <!-- Seat Stats Row -->
+                    <div v-if="seatStats.total > 0" class="flex items-center gap-2 pt-2 border-t border-gray-100">
+                      <div class="flex-1 flex items-center justify-center gap-1 py-1 bg-red-50 rounded-lg">
+                        <span class="text-lg font-black text-red-600">{{ seatStats.available }}</span>
+                        <span class="text-[10px] text-red-600 font-medium">restantes</span>
+                      </div>
+                      <div class="flex-1 flex items-center justify-center gap-1 py-1 bg-green-50 rounded-lg">
+                        <span class="text-lg font-black text-green-600">{{ seatStats.total }}</span>
+                        <span class="text-[10px] text-green-600 font-medium">total</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Desktop: Show all trips with highlighted selected -->
+                  <div v-if="!isMobile && trips.length > 0" class="space-y-2">
+                    <div 
+                      v-for="trip in trips" 
+                      :key="trip.id"
+                      @click="selectTrip(trip.id)"
+                      :class="[
+                        'p-3 rounded-lg cursor-pointer transition-all border-2',
+                        selectedTripId === trip.id 
+                          ? 'bg-green-50 border-green-500 shadow-md' 
+                          : 'bg-white border-gray-200 hover:border-green-300 hover:shadow-sm'
+                      ]"
+                    >
+                      <div class="flex items-center justify-between">
+                        <div class="flex-1 min-w-0">
+                          <div class="flex items-center gap-2">
+                            <div v-if="selectedTripId === trip.id" class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                            <div class="font-bold text-gray-900 truncate">{{ trip.route?.name }}</div>
+                          </div>
+                          <div class="text-xs text-gray-500 mt-0.5">{{ trip.vehicle?.identifier }} • {{ trip.vehicle?.vehicle_type?.name }}</div>
+                        </div>
+                        <div class="text-right shrink-0 ml-3">
+                          <div class="text-lg font-black text-gray-900">
+                            {{ new Date(trip.departure_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) }}
+                          </div>
+                          <div class="text-[10px] text-gray-500">
+                            {{ new Date(trip.departure_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) }}
+                          </div>
+                        </div>
+                      </div>
+                      <!-- Seat Stats for all trips -->
+                      <div class="flex items-center gap-2 mt-2 pt-2 border-t" :class="selectedTripId === trip.id ? 'border-green-200' : 'border-gray-100'">
+                        <div class="flex-1 flex items-center justify-center gap-1 py-1 bg-red-50 rounded-lg">
+                          <span class="text-sm font-black text-red-600">{{ trip.available_seats || 0 }}</span>
+                          <span class="text-[10px] text-red-600 font-medium">restantes</span>
+                        </div>
+                        <div class="flex-1 flex items-center justify-center gap-1 py-1 rounded-lg" :class="selectedTripId === trip.id ? 'bg-green-100' : 'bg-gray-50'">
+                          <span class="text-sm font-black" :class="selectedTripId === trip.id ? 'text-green-600' : 'text-gray-600'">{{ trip.total_seats || 0 }}</span>
+                          <span class="text-[10px] font-medium" :class="selectedTripId === trip.id ? 'text-green-600' : 'text-gray-500'">total</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- No trip selected / No trips -->
+                  <div v-if="isMobile && !currentTrip" class="h-full flex flex-col items-center justify-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 py-10">
+                    <div class="bg-white p-6 rounded-full shadow-md mb-6 relative">
+                       <Bus class="w-16 h-16 text-green-600" />
+                       <div class="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full border-2 border-white shadow-sm">
+                         {{ trips.length }}
+                       </div>
+                    </div>
+                    <h3 class="text-2xl font-black text-gray-900 mb-2">{{ trips.length }} voyages en cours</h3>
+                    <p class="text-gray-500 text-sm max-w-[250px] text-center mb-6">Sélectionnez le voyage pour lequel vous souhaitez vendre des billets.</p>
+                    <button 
+                      @click="showTripSelectionModal = true"
+                      class="px-8 py-3 bg-green-600 text-white rounded-xl text-lg font-black shadow-lg shadow-green-600/20 hover:bg-green-700 hover:scale-105 transition-all transform active:scale-95"
+                    >
+                      Choisir un voyage
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tronçons / Destinations -->
+            <div :class="[
+              'lg:col-span-1 flex flex-col min-h-0 overflow-hidden',
+              isMobile && !autoSelectOptimal && selectedFare ? 'order-3' : 'order-2'
+            ]">
+              <div class="bg-white rounded-lg border border-blue-200 shadow-sm flex flex-col h-full">
+                <div class="px-3 py-2 border-b border-blue-100 bg-blue-50">
+                  <h2 class="text-sm font-bold text-blue-700 flex items-center">
+                    <Routes class="mr-1.5 w-4 h-4" />
+                    Destination
+                  </h2>
+                </div>
+                <div class="flex-1 overflow-y-auto p-2">
                   <div v-if="currentTrip" class="space-y-2">
-                    <!-- Quantity Selector Removed -->
-                    
-                    <!-- Fare Cards -->
                     <div v-for="fare in availableFares" :key="fare.id"
                          @click="selectedFare = fare"
                          :class="[
-                           'p-2 rounded-lg cursor-pointer transition-all duration-200',
+                           'relative overflow-hidden rounded-xl cursor-pointer transition-all duration-200 active:scale-[0.98]',
                            selectedFare?.id === fare.id 
-                             ? 'ring-2 ring-offset-1 shadow-md' 
-                             : 'hover:shadow-md hover:opacity-90'
+                             ? 'ring-2 ring-offset-2 shadow-lg' 
+                             : 'hover:shadow-lg'
                          ]"
                          :style="{
                            backgroundColor: fare.color,
                            '--tw-ring-color': fare.color
                          }"
                     >
-                      <div class="font-semibold text-xs text-white">
-                        {{ fare.from_stop?.name }} → {{ fare.to_stop?.name }}
+                      <!-- Horizontal Layout: Destination Left, Price Right -->
+                      <div class="p-3 flex items-center justify-between">
+                        <div class="flex-1 min-w-0 mr-3">
+                          <div class="text-white text-base font-bold truncate">
+                            {{ fare.to_stop?.name }}
+                          </div>
+                          <div class="text-white/70 text-[10px] font-medium">
+                            → depuis {{ fare.from_stop?.name?.split(' - ')[1] || fare.from_stop?.name }}
+                          </div>
+                        </div>
+                        <div class="text-right shrink-0 flex items-center gap-2">
+                          <div>
+                            <div class="text-2xl font-black text-white">
+                              {{ fare.amount.toLocaleString('fr-FR') }}
+                            </div>
+                            <div class="text-white/70 text-[10px] font-bold">FCFA</div>
+                          </div>
+                          <div v-if="selectedFare?.id === fare.id" class="w-6 h-6 bg-white/30 rounded-full flex items-center justify-center">
+                            <Check class="w-4 h-4 text-white" />
+                          </div>
+                        </div>
                       </div>
-                      <div class="text-sm font-bold mt-1 text-white">
-                        {{ fare.amount.toLocaleString('fr-FR') }} FCFA
-                      </div>
-                      <div v-if="ticketQuantity > 1" class="text-xs text-white/80 mt-1">
-                        Total: {{ (fare.amount * ticketQuantity).toLocaleString('fr-FR') }} FCFA
+                      <div v-if="ticketQuantity > 1" class="bg-black/10 px-3 py-1 text-white/90 text-[10px] font-bold">
+                        ×{{ ticketQuantity }} = {{ (fare.amount * ticketQuantity).toLocaleString('fr-FR') }} F
                       </div>
                     </div>
                   </div>
-                  <div v-else class="text-center text-gray-400 py-8">
-                    <Routes class="w-10 h-10 mx-auto mb-2" />
+                  <div v-else class="h-32 flex flex-col items-center justify-center text-gray-400">
+                    <Routes class="w-8 h-8 mb-2 opacity-50" />
+                    <p class="text-xs">Sélectionnez un voyage</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- Places Section (inline on mobile) -->
+            <div :class="[
+              'lg:hidden flex flex-col min-h-[350px]',
+              isMobile && !autoSelectOptimal && selectedFare ? 'order-2' : 'order-3'
+            ]">
+              <div class="bg-white rounded-lg border-2 border-red-500 shadow-lg flex flex-col h-full overflow-hidden">
+                <div class="px-3 py-2 border-b-2 border-red-500 bg-gradient-to-r from-red-50 to-orange-50">
+                  <div class="flex items-center justify-between">
+                    <h2 class="text-sm font-semibold text-red-700 flex items-center">
+                      <Seat class="mr-2 w-4 h-4" />
+                      Places
+                    </h2>
+                    <div v-if="currentTrip && seatMap" class="flex items-center gap-2">
+                      <div class="flex items-center gap-1 bg-white rounded border border-red-300 p-1">
+                        <button @click="zoomOut" class="w-6 h-6 flex items-center justify-center text-red-600 hover:bg-red-50 rounded">−</button>
+                        <span class="text-xs text-gray-600 min-w-[40px] text-center">{{ Math.round(zoomLevel * 100) }}%</span>
+                        <button @click="zoomIn" class="w-6 h-6 flex items-center justify-center text-red-600 hover:bg-red-50 rounded">+</button>
+                      </div>
+                      <button @click="resetZoom" class="px-2 py-1 text-xs bg-red-600 text-white rounded">↺</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex-1 overflow-hidden p-2 flex items-center justify-center bg-gray-50 relative" :class="{ 'cursor-grab': !isDragging, 'cursor-grabbing': isDragging }">
+                  <div v-if="seatMapLoading" class="text-center">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-2"></div>
+                    <p class="text-xs text-gray-600">Chargement...</p>
+                  </div>
+                  <div v-else-if="currentTrip && seatMap" class="w-full h-full flex items-center justify-center" :style="{ transform: `translate(${panX}px, ${panY}px) scale(${zoomLevel})`, transition: isDragging ? 'none' : 'transform 0.1s ease-out' }">
+                    <VehicleSeatMapSVG
+                      v-if="currentTrip.vehicle?.vehicle_type"
+                      :vehicle-type="currentTrip.vehicle.vehicle_type"
+                      :seat-map="seatMap"
+                      :suggested-seats="suggestedSeats"
+                      :selected-seat="selectedSeatNumber"
+                      :selected-color="selectedFare?.color"
+                      :show-suggestions="!autoSelectOptimal"
+                      @seat-click="bookSeat"
+                    />
+                  </div>
+                  <div v-else class="text-center text-gray-400">
+                    <Seat class="w-10 h-10 mx-auto mb-2" />
                     <p class="text-xs">Sélectionnez un voyage</p>
                   </div>
                 </div>
@@ -627,9 +790,9 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- Right Side: Places (1/4 - 25% of total) - Full Height -->
-        <div class="col-span-3 flex flex-col min-h-0">
-          <div class="bg-white rounded-lg border-2 border-red-500 shadow-lg flex flex-col h-full">
+        <!-- Right Side: Places - Desktop Only -->
+        <div class="hidden lg:flex lg:col-span-4 xl:col-span-3 flex-col min-h-0">
+          <div class="bg-white rounded-lg border-2 border-red-500 shadow-lg flex flex-col h-full overflow-hidden">
             <div class="px-3 py-2 border-b-2 border-red-500 bg-gradient-to-r from-red-50 to-orange-50">
               <div class="flex items-center justify-between mb-2">
                 <h2 class="text-sm font-semibold text-red-700 flex items-center">
@@ -729,9 +892,9 @@ onMounted(async () => {
     </div>
 
     <!-- Passenger Information Modal -->
-    <div v-if="showPassengerModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-[60] flex items-center justify-center">
-      <div class="relative bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
-          <div class="p-6">
+    <div v-if="showPassengerModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div class="relative bg-white rounded-t-2xl sm:rounded-lg shadow-xl w-full max-w-md mx-0 sm:mx-4 transform transition-all duration-300">
+          <div class="p-4 md:p-6">
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-xl font-bold text-gray-900">Informations Passager</h3>
               <button @click="cancelBooking" class="text-gray-400 hover:text-gray-600">
@@ -831,7 +994,7 @@ onMounted(async () => {
                 class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 <Printer class="w-5 h-5 mr-2" />
-                {{ processing ? 'Impression...' : 'Imprimer' }}
+                {{ processing ? '...' : 'Imprimer' }}
               </button>
             </div>
           </form>
@@ -840,9 +1003,9 @@ onMounted(async () => {
     </div>
 
     <!-- Modal de création de voyage -->
-    <div v-if="showCreateTripModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-        <div class="mt-3">
+    <div v-if="showCreateTripModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+      <div class="relative bg-white rounded-lg shadow-xl w-full max-w-md">
+        <div class="p-5">
           <h3 class="text-lg leading-6 font-medium text-gray-900">Créer un nouveau voyage</h3>
           <form @submit.prevent="createTrip" class="mt-2 space-y-4">
             <div>
@@ -945,6 +1108,92 @@ onMounted(async () => {
         <!-- Instructions -->
         <div class="px-6 py-3 border-t border-gray-200 bg-gray-50 text-center text-sm text-gray-600">
           Le véhicule est affiché horizontalement. Utilisez le défilement pour voir toutes les places. Cliquez sur une place pour réserver.
+        </div>
+      </div>
+    </div>
+
+    <!-- Trip Selection Modal -->
+    <div v-if="showTripSelectionModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+      <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden transform transition-all">
+        <!-- Modal Header -->
+        <div class="px-6 py-4 border-b border-gray-100 bg-green-50 flex items-center justify-between">
+          <div>
+            <h3 class="text-xl font-bold text-green-700">Sélectionner un voyage</h3>
+            <p class="text-sm text-green-600">Choisissez le départ pour lequel vous vendez des billets</p>
+          </div>
+          <button @click="showTripSelectionModal = false" class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
+            <Close class="w-6 h-6" />
+          </button>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="p-4 border-b border-gray-100 bg-white">
+          <div class="relative">
+            <input 
+              v-model="searchQuery"
+              type="text"
+              placeholder="Rechercher par destination ou numéro de bus..."
+              class="w-full pl-10 pr-4 py-3 bg-gray-50 border-0 focus:ring-2 focus:ring-green-500 rounded-xl text-sm transition-all"
+            />
+            <div class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+               <Bus class="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Trip List -->
+        <div class="flex-1 overflow-y-auto p-4 bg-gray-50">
+          <div v-if="filteredTrips.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div v-for="trip in filteredTrips" :key="trip.id"
+                 @click="selectTrip(trip.id)"
+                 :class="[
+                   'group p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 bg-white hover:shadow-lg',
+                   selectedTripId === trip.id 
+                     ? 'border-green-500 bg-green-50 shadow-md ring-4 ring-green-500/10' 
+                     : 'border-transparent hover:border-green-200'
+                 ]">
+              <div class="flex items-start justify-between mb-3">
+                <div class="bg-green-100 p-2 rounded-lg group-hover:bg-green-200 transition-colors">
+                  <Bus class="w-6 h-6 text-green-600" />
+                </div>
+                <div v-if="selectedTripId === trip.id" class="bg-green-500 text-white p-1 rounded-full">
+                  <Check class="w-4 h-4" />
+                </div>
+              </div>
+              
+              <div class="font-bold text-gray-900 text-base mb-2 leading-tight">
+                {{ trip.route?.name }}
+              </div>
+              
+              <div class="space-y-2">
+                <div class="flex items-center text-sm text-gray-600">
+                  <Clock class="w-4 h-4 mr-2 text-green-500" />
+                  <span>{{ new Date(trip.departure_at).toLocaleString('fr-FR', {
+                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                  }) }}</span>
+                </div>
+                <div class="flex items-center text-sm text-gray-600">
+                  <MapMarker class="w-4 h-4 mr-2 text-green-500" />
+                  <span>Bus: {{ trip.vehicle?.identifier }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else class="h-64 flex flex-col items-center justify-center text-gray-400">
+            <Bus class="w-16 h-16 mb-4 opacity-20" />
+            <p class="text-lg font-medium">Aucun voyage trouvé</p>
+            <p class="text-sm">Essayez une autre recherche ou créez un nouveau voyage</p>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="p-4 border-t border-gray-100 bg-white flex justify-end">
+           <button 
+             @click="showTripSelectionModal = false"
+             class="px-6 py-2 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 transition-colors"
+           >
+             Fermer
+           </button>
         </div>
       </div>
     </div>

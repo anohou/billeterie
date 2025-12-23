@@ -1,26 +1,43 @@
 <template>
   <div>
     <div id="MainNav"
-      class="fixed z-50 w-full flex items-center justify-between h-[70px] bg-green-50 shadow-xl border-b border-orange-200">
+      :class="[
+        'fixed z-50 w-full flex items-center justify-between bg-green-50 shadow-xl border-b border-orange-200 transition-all',
+        showNav ? 'h-[70px]' : 'h-[56px] px-2'
+      ]">
       <!-- Left Section -->
       <div id="NavLeft" class="flex items-center justify-start">
-        <Link :href="route('dashboard')" class="pl-4 flex items-center gap-2">
-        <div class="flex items-center">
-          <Earth class="text-green-700" :size="32" />
-          <div class="ml-2">
-            <span class="font-bold text-2xl text-green-700">SysGe</span>
-            <span class="font-bold text-2xl text-orange-500 ml-2">Trans</span>
+        <template v-if="showNav">
+          <Link :href="route('dashboard')" class="pl-4 flex items-center gap-2">
+          <div class="flex items-center">
+            <Earth class="text-green-700" :size="32" />
+            <div class="ml-2">
+              <span class="font-bold text-2xl text-green-700">i - </span>
+              <span class="font-bold text-2xl text-orange-500 ml-0">Ticket</span>
+            </div>
           </div>
-        </div>
-        </Link>
-        <button @click="isMenuOpen = !isMenuOpen" class="lg:hidden p-2 ml-4 hover:bg-green-100 rounded-lg">
-          <Menu v-if="!isMenuOpen" class="text-green-700" :size="28" />
-          <Close v-else class="text-green-700" :size="28" />
-        </button>
+          </Link>
+          <button @click="isMenuOpen = !isMenuOpen" class="lg:hidden p-2 ml-4 hover:bg-green-100 rounded-lg">
+            <Menu v-if="!isMenuOpen" class="text-green-700" :size="28" />
+            <Close v-else class="text-green-700" :size="28" />
+          </button>
+        </template>
+        <template v-else>
+           <!-- Compact mode: logo + hamburger menu -->
+           <Link :href="route('dashboard')" class="flex items-center gap-1.5 ml-2">
+             <Earth class="text-green-700" :size="24" />
+             <span class="font-bold text-lg text-green-700">i-</span>
+             <span class="font-bold text-lg text-orange-500">Ticket</span>
+           </Link>
+           <button @click="isMenuOpen = !isMenuOpen" class="lg:hidden p-2 hover:bg-green-100 rounded-lg ml-auto mr-2">
+             <Menu v-if="!isMenuOpen" class="text-green-700" :size="24" />
+             <Close v-else class="text-green-700" :size="24" />
+           </button>
+        </template>
       </div>
 
       <!-- Center Section - Desktop Navigation -->
-      <div id="NavCenter" class="hidden lg:flex items-center justify-center w-8/12 max-w-[600px] gap-2">
+      <div v-if="showNav" id="NavCenter" class="hidden lg:flex items-center justify-center w-8/12 max-w-[600px] gap-2">
         <Link v-for="item in navItems" :key="item.route" :href="route(item.route)" :class="[
           'flex flex-col items-center justify-center w-full py-3 px-2 rounded-lg transition-colors h-[64px] relative',
           route().current(item.route)
@@ -43,7 +60,10 @@
       </div>
 
       <!-- Right Section -->
-      <div class="flex items-center justify-end gap-2 mr-4">
+      <div class="flex items-center justify-end gap-3 mr-4">
+        <!-- Optional Header Actions Slot -->
+        <slot name="header-actions" />
+
         <div class="flex items-center justify-center relative">
           <button @click="showMenu = !showMenu">
             <img class="rounded-full min-w-[40px] max-h-[40px] cursor-pointer border-2 border-orange-300"
@@ -116,7 +136,7 @@
     </div>
 
     <div class="min-h-screen bg-green-50/10">
-      <div class="pt-[70px]">
+      <div :class="showNav ? 'pt-[70px]' : 'pt-[56px]'">
         <div class="max-w-[1920px] mx-auto">
           <slot />
         </div>
@@ -136,6 +156,13 @@ import Ticket from 'vue-material-design-icons/Ticket.vue';
 import Logout from 'vue-material-design-icons/Logout.vue';
 import Menu from 'vue-material-design-icons/Menu.vue';
 import Close from 'vue-material-design-icons/Close.vue';
+
+const props = defineProps({
+  showNav: {
+    type: Boolean,
+    default: true
+  }
+});
 
 const showMenu = ref(false);
 const isMenuOpen = ref(false);

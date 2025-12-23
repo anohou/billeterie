@@ -31,6 +31,7 @@ class TicketingController extends Controller
         if ($user->role === 'admin' || $user->role === 'supervisor') {
             // Les admins et superviseurs voient tout
             $trips = Trip::with(['route.originStation', 'vehicle.vehicleType'])
+                ->withCount('tripSeatOccupancies as occupied_seats')
                 ->where('departure_at', '>=', now()->startOfDay())
                 ->orderBy('departure_at')
                 ->get();
@@ -54,6 +55,7 @@ class TicketingController extends Controller
             }
 
             $trips = Trip::with(['route.originStation', 'vehicle.vehicleType'])
+                ->withCount('tripSeatOccupancies as occupied_seats')
                 ->whereIn('route_id', $assignedRouteIds)
                 ->where('departure_at', '>=', now()->startOfDay())
                 ->orderBy('departure_at')
@@ -93,6 +95,21 @@ class TicketingController extends Controller
         // Récupérer toutes les routes et véhicules pour la création
         $routes = \App\Models\Route::orderBy('name')->get(['id', 'name']);
         $vehicles = \App\Models\Vehicle::with('vehicleType')->orderBy('identifier')->get(['id', 'identifier', 'seat_count', 'vehicle_type_id']);
+
+        // Calculate real seat counts for each trip from seat_map
+        foreach ($trips as $trip) {
+            $seatMap = $trip->vehicle?->vehicleType?->seat_map ?? [];
+            $totalSeats = 0;
+            foreach ($seatMap as $row) {
+                foreach ($row as $cell) {
+                    if (isset($cell['type']) && $cell['type'] === 'seat') {
+                        $totalSeats++;
+                    }
+                }
+            }
+            $trip->total_seats = $totalSeats;
+            $trip->available_seats = $totalSeats - ($trip->occupied_seats ?? 0);
+        }
 
         return [
             'trips' => $trips,

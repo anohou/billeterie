@@ -12,8 +12,8 @@
                                     <div class="flex items-center">
                                         <Earth class="text-green-700" :size="32"/>
                                         <div class="ml-2">
-                                            <span class="font-bold text-xl text-green-700">SysGe</span>
-                                            <span class="font-bold text-xl text-orange-500">Trans</span>
+                                            <span class="font-bold text-xl text-green-700">i</span> - 
+                                            <span class="font-bold text-xl text-orange-500">Ticket</span>
                                         </div>
                                     </div>
                                 </Link>
