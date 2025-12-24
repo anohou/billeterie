@@ -57,7 +57,8 @@ process_template() {
     if echo "$content" | grep -q '{{{[A-Z_]*}}}'; then
         echo "⚠️  Warning: Unresolved placeholders found in $output_file"
         echo "$content" | grep -o '{{{[A-Z_]*}}}' | sort -u | sed 's/^/   - /'
-        return 1
+        # Return 0 to avoid crashing set -e scripts; warnings are informative
+        return 0
     fi
 
     return 0

@@ -7,6 +7,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOYMENT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/utils.sh"
 
+# Load feature system
+source "${DEPLOYMENT_ROOT}/features/loader.sh"
+
 #######################################
 # Validate required environment variables
 # Ensures all variables needed by docker-compose are set
@@ -55,11 +58,15 @@ deploy() {
 
     log "INFO" "Starting deployment for: $environment"
 
-    # Load configuration and setup environment variables
+    # Initialize configuration
     load_config "$environment"
     setup_environment "$environment"
 
-    # Export variables for docker-compose
+    # === LOAD AND INITIALIZE FEATURES ===
+    load_features
+    init_features || exit 1
+
+    # Export variables for docker-compose and features
     export ENVIRONMENT="$environment"
     export ACTION="deploy"
     export TRAEFIK_SWARM_NETWORK=$(get_config "infrastructure.traefik.network_name" "$environment")
@@ -85,6 +92,12 @@ deploy() {
 
     # Validate all required environment variables are set
     validate_required_vars "$environment"
+
+    # === HOOK: pre-validation ===
+    exec_hook "pre-validation" "$environment" "deploy"
+
+    # Validate features
+    validate_features || exit 1
 
     # Verify secrets file(s) exists - support for multi-secrets
     local secrets_missing=0
@@ -199,6 +212,12 @@ deploy() {
 
     log "SUCCESS" "Storage directories configured with correct ownership"
 
+    # === HOOK: post-validation ===
+    exec_hook "post-validation"
+
+    # === HOOK: pre-deploy ===
+    exec_hook "pre-deploy"
+
     # Start containers
     log "INFO" "Starting containers with docker-compose"
     ${DOCKER_COMPOSE_CMD} -f "$COMPOSE_FILE" -p "$DOCKER_COMPOSE_PROJECT" up -d || {
@@ -240,9 +259,15 @@ deploy() {
         log "WARNING" "Health check returned non-200 status"
     fi
 
+    # === HOOK: post-deploy ===
+    exec_hook "post-deploy"
+
     # Calculate deployment duration
     local end_time=$(date +%s)
     export DEPLOYMENT_DURATION=$((end_time - start_time))
+
+    # === HOOK: on-success ===
+    exec_hook "on-success"
 
     # Fix double slashes in URL
     local app_url="https://${APP_URL_DOMAIN}/${APP_URL_PATH}"
@@ -279,34 +304,20 @@ deploy() {
         fi
     fi
 
-    # Print health status (skip if route doesn't exist)
-    local health_status="unknown"
-    local health_message=""
+    # === DEPLOYMENT VERIFICATION ===
+    log "INFO" "Verifying application deployment..."
 
-    if [ "${SKIP_HEALTH_CHECK:-false}" = "true" ]; then
-        health_status="skipped"
-        health_message="⚠️  Health route not found (skipped check)"
-    elif ${DOCKER_COMPOSE_CMD} -f "$COMPOSE_FILE" -p "$DOCKER_COMPOSE_PROJECT" ps | grep -q "Up"; then
-        if docker exec "$DOCKER_CONTAINER_NAME" curl -f http://localhost:8000/api/health &>/dev/null; then
-            health_status="healthy"
-            health_message="✓ Healthy"
-        else
-            # Check if it's a 500 error
-            local http_code=$(docker exec "$DOCKER_CONTAINER_NAME" curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/health 2>/dev/null || echo "000")
-            if [ "$http_code" = "500" ]; then
-                health_status="error"
-                health_message="⚠️  500 Error (check logs)"
-            elif [ "$http_code" = "404" ]; then
-                health_status="not_found"
-                health_message="⚠️  404 Not Found (route missing?)"
-            else
-                health_status="starting"
-                health_message="⚠️  Not ready (may still be starting)"
-            fi
-        fi
+    local verification_status="unknown"
+
+    if "${SCRIPT_DIR}/verify-deployment.sh" "$environment"; then
+        verification_status="success"
+        log "SUCCESS" "Deployment verified successfully"
     else
-        health_status="down"
-        health_message="✗ Container not running"
+        verification_status="failure"
+        log "WARNING" "Deployment verification failed - check logs for details"
+        if [ "${STRICT_VERIFICATION:-false}" = "true" ]; then
+             exit 1
+        fi
     fi
 
     # ═══════════════════════════════════════════════════════════════
@@ -314,7 +325,8 @@ deploy() {
     # ═══════════════════════════════════════════════════════════════
     echo ""
     log "SUCCESS" "╔═══════════════════════════════════════════════════════════╗"
-    if [ "$migrations_needed" = "true" ] || [ "$health_status" = "error" ]; then
+    log "SUCCESS" "╔═══════════════════════════════════════════════════════════╗"
+    if [ "$migrations_needed" = "true" ] || [ "$verification_status" != "success" ]; then
         log "WARNING" "║       DEPLOYMENT COMPLETE - ACTION REQUIRED               ║"
     else
         log "SUCCESS" "║       DEPLOYMENT COMPLETED SUCCESSFULLY                   ║"
@@ -330,7 +342,7 @@ deploy() {
     log "INFO" "Status Overview:"
     log "INFO" "  Container:     $(${DOCKER_COMPOSE_CMD} -f "$COMPOSE_FILE" -p "$DOCKER_COMPOSE_PROJECT" ps | grep -q "Up" && echo "✓ Running" || echo "✗ Stopped")"
     log "INFO" "  Database:      $(docker exec "$DOCKER_CONTAINER_NAME" php artisan db:show &>/dev/null && echo "✓ Connected" || echo "✗ Not connected")"
-    log "INFO" "  Health:        $health_message"
+    log "INFO" "  Verification:  $([ "$verification_status" = "success" ] && echo "✓ Passed" || echo "⚠️  Failed/Warning")"
     if [ "$migrations_needed" = "false" ]; then
         log "INFO" "  Migrations:    ✓ Up to date"
     else
@@ -349,7 +361,6 @@ deploy() {
     echo ""
     log "INFO" "🌐 Application URLs:"
     log "INFO" "  → API:    ${app_url}"
-    log "INFO" "  → Health: ${app_url}/api/health"
     echo ""
 
     # Quick commands

@@ -16,7 +16,7 @@ if [ ! -d "vendor" ]; then
         composer install --no-interaction --no-progress --prefer-dist
     fi
 else
-    echo "[Start up] Composer dependencies already installed (CI/CD image)"
+    echo "[Startup] Composer dependencies already installed (CI/CD image)"
 fi
 
 # Generate .env file from YAML config and secrets (now vendor exists)
@@ -68,6 +68,12 @@ if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
     echo "[Startup] Running migrations..."
     php artisan migrate --force
 fi
+
+# Clear file-based caches (no database connection needed)
+echo "[Startup] Clearing file-based caches..."
+php artisan config:clear
+php artisan route:clear
+# Note: cache:clear requires DB/Redis - skip on startup
 
 # Ensure storage directories and bootstrap/cache exist with .gitignore files
 echo "[Startup] Ensuring storage directories exist..."

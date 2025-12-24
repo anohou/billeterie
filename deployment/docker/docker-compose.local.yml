@@ -23,7 +23,7 @@ services:
       - db
       - redis
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/api/health"]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -31,6 +31,7 @@ services:
 
   db:
     image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password --innodb-buffer-pool-size=128M --performance-schema=OFF --innodb-log-buffer-size=8M
     container_name: ${DOCKER_PROJECT}_mysql_local
     environment:
       MYSQL_ROOT_PASSWORD: root_password

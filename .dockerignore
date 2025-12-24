@@ -1,4 +1,4 @@
-# Ignore bootstrap cache - it will be regenerated in the container
+# Ignore bootstrap cache - prevents dev dependency errors (e.g., Pail)
 bootstrap/cache/
 # Ignore local storage - will be bind mounted
 storage/

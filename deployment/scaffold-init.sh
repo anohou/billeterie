@@ -372,27 +372,33 @@ show_summary() {
 
     cat << EOF
 $(print_color "$COLOR_BOLD" "Project:")
-  Name:         ${CONF_PROJECT_NAME}
-  Display:      ${CONF_PROJECT_DISPLAY_NAME}
+  Name:         ${CONF_PROJECT_NAME:-test}
+  Display:      ${CONF_PROJECT_DISPLAY_NAME:-Test}
+  Type:         ${CONF_APP_TYPE:-api-only}
 
 $(print_color "$COLOR_BOLD" "Registry:")
-  Host:         ${CONF_REGISTRY_HOST}
-  Namespace:    ${CONF_REGISTRY_NAMESPACE}
-  Full Image:   ${CONF_REGISTRY_HOST}/${CONF_REGISTRY_NAMESPACE}/${CONF_PROJECT_NAME}
+  Host:         ${CONF_REGISTRY_HOST:-ghcr.io}
+  Namespace:    ${CONF_REGISTRY_NAMESPACE:-test}
+  Full Image:   ${CONF_REGISTRY_HOST:-ghcr.io}/${CONF_REGISTRY_NAMESPACE:-test}/${CONF_PROJECT_NAME:-test}
+
+$(print_color "$COLOR_BOLD" "URLs:")
+  Local:      https://${CONF_APP_DOMAIN:-localhost}:${CONF_APP_PORT:-8000}
+  Staging:    https://${CONF_STAGING_DOMAIN:-staging.example.com}
+  Production: https://${CONF_PRODUCTION_DOMAIN:-example.com}
+
+$(print_color "$COLOR_BOLD" "Cookies:")
+  Staging:    ${CONF_STAGING_SESSION_DOMAIN:-${CONF_STAGING_DOMAIN:-staging.example.com}}
+  Production: ${CONF_PRODUCTION_SESSION_DOMAIN:-${CONF_PRODUCTION_DOMAIN:-example.com}}
 
 $(print_color "$COLOR_BOLD" "Staging:")
-  Domain:       ${CONF_STAGING_DOMAIN}
-  Session:      ${CONF_STAGING_SESSION_DOMAIN}
-  URL Path:     /${CONF_PROJECT_NAME}-stg-${CONF_STAGING_URL_TOKEN}
-  Full URL:     https://${CONF_STAGING_DOMAIN}/${CONF_PROJECT_NAME}-stg-${CONF_STAGING_URL_TOKEN}
+  URL Path:     /${CONF_PROJECT_NAME:-test}-stg-${CONF_STAGING_URL_TOKEN:-token}
+  Full URL:     https://${CONF_STAGING_DOMAIN:-staging.example.com}/${CONF_PROJECT_NAME:-test}-stg-${CONF_STAGING_URL_TOKEN:-token}
 
 $(print_color "$COLOR_BOLD" "Production:")
-  Domain:       ${CONF_PRODUCTION_DOMAIN}
-  Session:      ${CONF_PRODUCTION_SESSION_DOMAIN}
-  URL Path:     /${CONF_PROJECT_NAME}-prod-${CONF_PRODUCTION_URL_TOKEN}
-  Full URL:     https://${CONF_PRODUCTION_DOMAIN}/${CONF_PROJECT_NAME}-prod-${CONF_PRODUCTION_URL_TOKEN}
-  CORS:         ${CONF_PRODUCTION_CORS_ORIGINS}
-  Sanctum:      ${CONF_PRODUCTION_SANCTUM_DOMAINS}
+  URL Path:     /${CONF_PROJECT_NAME:-test}-prod-${CONF_PRODUCTION_URL_TOKEN:-token}
+  Full URL:     https://${CONF_PRODUCTION_DOMAIN:-example.com}/${CONF_PROJECT_NAME:-test}-prod-${CONF_PRODUCTION_URL_TOKEN:-token}
+  CORS:         ${CONF_PRODUCTION_CORS_ORIGINS:-*}
+  Sanctum:      ${CONF_PRODUCTION_SANCTUM_DOMAINS:-localhost}
 
 $(print_color "$COLOR_BOLD" "Target Directory:")
   ${TARGET_PROJECT_DIR}
@@ -443,6 +449,22 @@ generate_files() {
         print_warning "[DRY RUN] Would create deployment/deployment.config.yml"
     fi
 
+    # Generate local-secrets.env
+    print_info "Generating local-secrets.env..."
+    if [[ "$DRY_RUN" == false ]]; then
+        if [[ -f "${template_dir}/local-secrets.env.template" ]]; then
+            process_template \
+                "${template_dir}/local-secrets.env.template" \
+                "${deploy_dir}/config/local-secrets.env" \
+                "${vars_args[@]}"
+            print_success "Created deployment/config/local-secrets.env"
+        else
+            print_warning "local-secrets.env template not found - skipping"
+        fi
+    else
+        print_warning "[DRY RUN] Would create deployment/config/local-secrets.env"
+    fi
+
     # Process Docker Compose files
     for env in local staging production; do
         print_info "Generating docker-compose.${env}.yml..."
@@ -478,6 +500,37 @@ generate_files() {
         print_warning "[DRY RUN] Would create deployment/docker/Dockerfile"
     fi
 
+    # Copy .dockerignore template (critical for preventing Pail errors)
+    print_info "Generating .dockerignore..."
+    if [[ "$DRY_RUN" == false ]]; then
+        if [[ -f "${template_dir}/.dockerignore.template" ]]; then
+            cp "${template_dir}/.dockerignore.template" "${TARGET_PROJECT_DIR}/.dockerignore"
+            print_success "Created .dockerignore"
+        else
+            print_warning ".dockerignore template not found - skipping"
+        fi
+    else
+        print_warning "[DRY RUN] Would create .dockerignore"
+    fi
+
+    # Copy supervisord.conf template (for fullstack projects)
+    if [[ "${CONF_APP_TYPE}" == "fullstack" ]]; then # Changed from CONF_PROJECT_TYPE to CONF_APP_TYPE for consistency
+        print_info "Generating supervisord.conf..."
+        if [[ "$DRY_RUN" == false ]]; then
+            if [[ -f "${template_dir}/supervisord.conf.template" ]]; then
+                process_template \
+                    "${template_dir}/supervisord.conf.template" \
+                    "${deploy_dir}/docker/supervisord.conf" \
+                    "${vars_args[@]}"
+                print_success "Created deployment/docker/supervisord.conf"
+            else
+                print_warning "supervisord.conf template not found - skipping"
+            fi
+        else
+            print_warning "[DRY RUN] Would create deployment/docker/supervisord.conf"
+        fi
+    fi
+
     # Create .github/workflows directory
     local github_dir="${TARGET_PROJECT_DIR}/.github/workflows"
     if [[ "$DRY_RUN" == false ]]; then
@@ -510,13 +563,17 @@ generate_files() {
         cp "${template_dir}/.env.template" "${deploy_dir}/templates/"
         print_success "Created deployment/templates/.env.template"
 
-        # Copy HealthController
-        cp "${template_dir}/HealthController.php" "${deploy_dir}/templates/"
-        print_success "Created deployment/templates/HealthController.php"
+
 
         # Copy deployment scripts from current deployment
         cp -r "${SCRIPT_DIR}/scripts/"* "${deploy_dir}/scripts/"
         print_success "Copied deployment scripts"
+
+        # Copy features directory
+        if [[ -d "${SCRIPT_DIR}/features" ]]; then
+            cp -r "${SCRIPT_DIR}/features" "${deploy_dir}/"
+            print_success "Copied deployment features"
+        fi
 
         # Copy docker scripts
         mkdir -p "${deploy_dir}/docker/scripts"
@@ -527,7 +584,6 @@ generate_files() {
         if [[ -d "${SCRIPT_DIR}/docker/config" ]]; then
             cp -r "${SCRIPT_DIR}/docker/config" "${deploy_dir}/docker/"
         fi
-        cp "${SCRIPT_DIR}/docker/supervisord.conf" "${deploy_dir}/docker/"
         print_success "Copied Docker configuration"
 
         # Copy utilities
@@ -584,12 +640,7 @@ $(print_color "$COLOR_BOLD" "3. Configure GitHub Secrets")
    - STAGING_DEPLOY_PATH
    - PRODUCTION_DEPLOY_PATH
 
-$(print_color "$COLOR_BOLD" "4. Add Health Controller")
-   Copy deployment/templates/HealthController.php to:
-   app/Http/Controllers/Api/HealthController.php
 
-   Add route to routes/api.php:
-   Route::get('/health', [HealthController::class, 'health']);
 
 $(print_color "$COLOR_BOLD" "5. Test Local Deployment")
    cd ${TARGET_PROJECT_DIR}/deployment

@@ -60,10 +60,10 @@ staging_vars:
   domain: &stg_domain "billeterie.anohou.dev"
   # Database name (DB_DATABASE) must be set in project secrets file:
   # /srv/apps/.config/staging/laravel/billeterie.env
-  session_domain: &stg_session_domain ".anohou.dev"
+  session_domain: &stg_session_domain "{{{STAGING_SESSION_DOMAIN}}}"
   origin: &stg_origin "https://billeterie.anohou.dev"
-  url_path: &stg_url_path "/billeterie-stg-x58q2vXcuiXYVnEUVmD2uWlqL0E6xgOOjhZYBADW"
-  url: &stg_url "https://billeterie.anohou.dev}/billeterie-stg-x58q2vXcuiXYVnEUVmD2uWlqL0E6xgOOjhZYBADW"
+  url_path: &stg_url_path "/billeterie-stg-XaoOWZnLCrXUfDTAsGC0ip7lwnwdlI2Lfmw4n5XZ"
+  url: &stg_url "https://billeterie.anohou.dev}/billeterie-stg-XaoOWZnLCrXUfDTAsGC0ip7lwnwdlI2Lfmw4n5XZ"
 
 # Production environment variables
 production_vars:
@@ -73,11 +73,11 @@ production_vars:
   # /srv/apps/.config/production/laravel/billeterie.env
   origin: &prod_origin "https://billeterie.anohou.dev"
   # Security: Explicit subdomain list (no wildcards)
-  cors_origins: &prod_cors_origins "https://billeterie.anohou.dev"
-  sanctum_domains: &prod_sanctum_domains "billeterie.anohou.dev"
-  session_domain: &prod_session_domain ".anohou.dev"
-  url_path: &prod_url_path "/billeterie-prod-i8e8F9bXriMyxcSQO9B0t0KzmYrZZXE5pStudTvO"
-  url: &prod_url "https://billeterie.anohou.dev}/billeterie-prod-i8e8F9bXriMyxcSQO9B0t0KzmYrZZXE5pStudTvO"
+  cors_origins: &prod_cors_origins "{{{PRODUCTION_CORS_ORIGINS}}}"
+  sanctum_domains: &prod_sanctum_domains "{{{PRODUCTION_SANCTUM_DOMAINS}}}"
+  session_domain: &prod_session_domain "{{{PRODUCTION_SESSION_DOMAIN}}}"
+  url_path: &prod_url_path "/billeterie-prod-2Y6V1X8QUtFmL7fQjlSoE5Qt1kAcS0LGiO5mKZux"
+  url: &prod_url "https://billeterie.anohou.dev}/billeterie-prod-2Y6V1X8QUtFmL7fQjlSoE5Qt1kAcS0LGiO5mKZux"
 
 # =============================================================================
 # 🐳 DOCKER & RUNTIME CONFIGURATION
@@ -174,7 +174,7 @@ environments:
     docker:
       url_domain: billeterie.localhost
       url_path: ""
-      secrets_files: ['config/local-secrets.env']
+      secrets_files: ['deployment/config/local-secrets.env']
 
     health:
       timeout: 60
