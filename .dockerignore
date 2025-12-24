@@ -1,0 +1,19 @@
+# Ignore bootstrap cache - it will be regenerated in the container
+bootstrap/cache/
+# Ignore local storage - will be bind mounted
+storage/
+# Ignore node modules - use multi-stage build
+node_modules/
+# Ignore local .env - generated from template in container
+.env
+.env.local
+.env.*.local
+# Ignore dev files
+.phpunit.result.cache
+.php-cs-fixer.cache
+# Ignore IDE files
+.idea/
+.vscode/
+# Ignore OS files
+.DS_Store
+Thumbs.db

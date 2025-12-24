@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  app:
+    image: ${DOCKER_IMAGE_NAME}
+    container_name: ${DOCKER_CONTAINER_NAME}
+
+    volumes:
+      # Bind mount entire project for code updates without rebuild
+      - type: bind
+        source: ../../
+        target: /var/www/html
+
+      # Mount merged secrets file (read-only)
+      - type: bind
+        source: ${SECRETS_MOUNT_FILE}
+        target: /home/sail/config/laravel/common-values.env
+        read_only: true
+
+    environment:
+      - APP_ENV=${ENVIRONMENT}
+      - CONTAINER_ROLE=app
+      - APP_TYPE=fullstack
+
+    networks:
+      - ${TRAEFIK_SWARM_NETWORK}
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_SWARM_NETWORK}"
+
+      # HTTP router - path-based routing
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.rule=Host(`${APP_URL_DOMAIN}`) && PathPrefix(`${APP_URL_PATH}`)"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.entrypoints=websecure"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.tls=true"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.tls.certresolver=letsencrypt"
+
+      # Strip prefix middleware to remove URL path prefix from requests
+      - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}.stripprefix.prefixes=${APP_URL_PATH}"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=${COMPOSE_PROJECT_NAME}"
+
+      # Service configuration
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.service=${COMPOSE_PROJECT_NAME}-service"
+      - "traefik.http.services.${COMPOSE_PROJECT_NAME}-service.loadbalancer.server.port=8000"
+
+    restart: unless-stopped
+
+networks:
+  traefik_swarm_network:
+    external: true
