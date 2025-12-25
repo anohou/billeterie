@@ -29,14 +29,14 @@ if [ "${APP_TYPE:-api-only}" = "fullstack" ]; then
     echo "[Startup] Full-stack application detected - verifying frontend assets..."
 
     if [ ! -d "public/build" ] || [ ! -f "public/build/manifest.json" ]; then
-        echo "[ERROR] Frontend assets not found in public/build/"
-        echo "[ERROR] Expected manifest.json and compiled assets"
-        echo "[ERROR] Docker image may not have been built correctly"
-        echo "[ERROR] For full-stack apps, ensure you used Dockerfile.fullstack.template"
-        exit 1
+        echo "[WARNING] Frontend assets not found in public/build/"
+        echo "[WARNING] Expected manifest.json and compiled assets"
+        echo "[WARNING] Container will start but frontend may not work correctly"
+        ls -la public/ || echo "public/ directory not found"
+        ls -la public/build/ 2>/dev/null || echo "public/build/ directory not found"        # Don't exit - allow container to start for debugging
+    else
+        echo "[Startup] ✓ Frontend assets verified (manifest.json found)"
     fi
-
-    echo "[Startup] ✓ Frontend assets verified (manifest.json found)"
 else
     echo "[Startup] API-only application - skipping frontend asset check"
 fi

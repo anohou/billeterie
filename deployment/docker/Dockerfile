@@ -1,9 +1,7 @@
 # =============================================================================
-# Multi-Stage Dockerfile for Full-Stack Laravel (PHP + Node.js/Vite)
+# Multi-Stage Dockerfile for Full-Stack Laravel (PHP 8.3 + Node.js + Vite)
 # =============================================================================
-# Multi-Stage Dockerfile for Laravel + Inertia + Vite (Full-Stack)
-# Based on production best practices from Laravel community
-# Uses serversideup/php for pre-built PHP extensions (NO COMPILATION!)
+# Based on proven working anohou-web-new configuration with frontend build stage
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -14,14 +12,11 @@ FROM node:20-alpine AS frontend-builder
 WORKDIR /app
 
 # Install minimal PHP and Composer for vendor dependencies
-# Only mbstring and openssl are required for Composer to work
-# Using --ignore-platform-reqs for other dependencies since we're just fetching packages
 RUN apk add --no-cache curl php83 php83-phar php83-mbstring php83-openssl \
     && ln -s /usr/bin/php83 /usr/bin/php \
     && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 # Copy composer files and install PHP vendor dependencies
-# Use --ignore-platform-reqs for extensions we don't need (dom, gd, etc.)
 COPY composer.json composer.lock ./
 RUN composer install --no-dev --no-scripts --prefer-dist --no-interaction --ignore-platform-reqs
 
@@ -31,14 +26,14 @@ COPY package*.json ./
 # Install all npm dependencies (including devDependencies for build)
 RUN npm ci --production=false
 
-# Copy vendor/ and source files for Vite compilation
+# Copy source files for Vite compilation
 COPY resources/ resources/
 COPY vite.config.js ./
 COPY tailwind.config.js* postcss.config.js* jsconfig.json* ./
 COPY public/ public/
 
 # Build frontend assets with Vite
-RUN npm run build
+RUN ls -la public/ && npm run build && ls -la public/ && ls -la public/build/
 
 # Verify build output exists
 RUN if [ ! -d "public/build" ]; then \
@@ -53,89 +48,146 @@ RUN if [ ! -d "public/build" ]; then \
     ls -lah public/build/
 
 # -----------------------------------------------------------------------------
-# Stage 2: PHP/Laravel Application (Pre-built Laravel-optimized image)
+# Stage 2: PHP/Laravel Application (php:8.3-fpm-alpine)
 # -----------------------------------------------------------------------------
-FROM serversideup/php:8.3-fpm-nginx-alpine AS base
+FROM php:8.3-fpm-alpine
 
-# Set labels
-LABEL maintainer="Anohou"
+LABEL maintainer="anohou"
 
-# Arguments
-ARG WWWUSER=www-data
-ARG WWWGROUP=www-data
+ARG WWWGROUP
+ARG NODE_VERSION=20
+ARG WWWUSER=sail
+ARG HOST_UID=1001
+ARG HOST_GID=1001
+ARG DOCKER_GID=1002
 
-# Set working directory
 WORKDIR /var/www/html
 
-# Environment variables
 ENV TZ=UTC
-ENV APP_ENV=production
+ENV SUPERVISOR_PHP_COMMAND="/usr/local/bin/php -d variables_order=EGPCS /var/www/html/artisan serve --host=0.0.0.0 --port=9000"
+ENV SUPERVISOR_PHP_USER="sail"
 
-# Switch to root to install system packages
-USER root
-
-# Install additional packages
+# Install essential packages
 RUN apk add --no-cache \
     bash \
+    curl \
+    zip \
+    unzip \
+    git \
     supervisor \
-    python3 \
-    py3-yaml \
-    msmtp \
-    ca-certificates
+    sqlite \
+    mysql-client
 
-# Environment variables for supervisor (using artisan serve, not nginx)
-ENV SUPERVISOR_PHP_COMMAND="/usr/local/bin/php -d variables_order=EGPCS /var/www/html/artisan serve --host=0.0.0.0 --port=9000"
-ENV SUPERVISOR_PHP_USER="www-data"
+# Install Node.js and npm
+RUN apk add --no-cache \
+    nodejs \
+    npm \
+    && npm install -g npm
+
+# Install PHP extensions
+RUN apk add --no-cache \
+    libpng-dev \
+    libzip-dev \
+    oniguruma-dev \
+    icu-dev \
+    gettext \
+    && docker-php-ext-install pdo_mysql bcmath gd intl zip pcntl
+
+# Configure and install GD with JPEG support
+RUN apk add --no-cache \
+    libjpeg-turbo-dev \
+    && docker-php-ext-configure gd --with-jpeg \
+    && docker-php-ext-install gd
+
+# Install PHP mail extensions
+RUN apk add --no-cache \
+    msmtp \
+    msmtp-doc \
+    ca-certificates \
+    mailx \
+    && docker-php-ext-install opcache
+
+# Install Redis PHP extension
+RUN apk add --no-cache --virtual .build-deps $PHPIZE_DEPS \
+    && pecl install redis \
+    && docker-php-ext-enable redis \
+    && apk del .build-deps
+
+# Install debugging tools
+RUN apk add --no-cache \
+    busybox-extras \
+    net-tools \
+    tcpdump \
+    strace \
+    lsof \
+    grep
+
+# Install Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
+    && chmod +x /usr/local/bin/composer
+
+# Ensure vi is available
+RUN ln -sf /bin/busybox /usr/bin/vi
+
+# Add Laravel-specific user and group
+RUN addgroup -g $DOCKER_GID -S docker && \
+    addgroup -g $HOST_GID -S $WWWUSER && \
+    adduser -u $HOST_UID -S $WWWUSER -G $WWWUSER && \
+    addgroup $WWWUSER docker
+
+# Set ownership and permissions for Laravel directories
+RUN mkdir -p /var/www/html/storage /var/www/html/bootstrap/cache && \
+    chown -R $HOST_UID:$HOST_GID /var/www/html && \
+    chmod -R 755 /var/www/html/storage /var/www/html/bootstrap/cache
+
+# Create directories for config
+RUN mkdir -p /home/sail/config/laravel && \
+    chown -R sail:sail /home/sail
+
+# Create directories for Supervisor and runtime
+RUN mkdir -p /var/log/supervisor /var/run  && \
+    chown -R sail:sail /var/log/supervisor /var/run && \
+    chmod -R 755 /var/log/supervisor /var/run && \
+    touch /var/run/supervisord.pid && \
+    chmod 777 /var/run/supervisord.pid
+
+# Configure Supervisor
+RUN mkdir -p /etc/supervisor/conf.d && \
+    chown -R sail:sail /etc/supervisor && \
+    chmod -R 755 /etc/supervisor
 
 # Copy application code
-COPY --chown=$WWWUSER:$WWWGROUP .  /var/www/html
+COPY --chown=sail:sail . /var/www/html
 
-# Copy compiled frontend assets from builder stage
-COPY --from=frontend-builder --chown=$WWWUSER:$WWWGROUP /app/public/build /var/www/html/public/build
+# Install Composer dependencies
+RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# Install Composer dependencies with production optimizations
-# Use --ignore-platform-reqs since some extensions may not be in the build env
-# but will be available at runtime (the image has them pre-compiled)
-RUN composer install \
-    --no-interaction \
-    --no-dev \
-    --no-scripts \
-    --prefer-dist \
-    --optimize-autoloader \
-    --classmap-authoritative \
-    --ignore-platform-reqs
+# Copy built frontend assets from frontend-builder stage (AFTER app code to avoid overwriting)
+# Debug: verify the source exists in the builder stage before copying
+RUN --mount=from=frontend-builder,source=/app/public/build,target=/tmp/check-build ls -la /tmp/check-build/ || echo "WARNING: No files in frontend-builder public/build"
+COPY --from=frontend-builder --chown=sail:sail /app/public/build /var/www/html/public/build
 
-# Create directories and set proper permissions
-RUN mkdir -p /var/www/html/storage/framework/cache \
-    && mkdir -p /var/www/html/storage/framework/sessions \
-    && mkdir -p /var/www/html/storage/framework/views \
-    && mkdir -p /var/www/html/storage/app \
-    && mkdir -p /var/www/html/storage/logs \
-    && mkdir -p /var/www/html/bootstrap/cache \
-    && chown -R $WWWUSER:$WWWGROUP /var/www/html \
-    && chmod -R 775 /var/www/html/storage \
-    && chmod -R 775 /var/www/html/bootstrap/cache
-
-# Create supervisor configuration
+# Copy supervisord config
 COPY deployment/docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Copy startup script
+# Copy scripts
 COPY deployment/docker/scripts/startup.sh /usr/local/bin/startup.sh
 COPY deployment/docker/scripts/generate-env.sh /usr/local/bin/generate-env.sh
-RUN chmod +x /usr/local/bin/startup.sh /usr/local/bin/generate-env.sh
 
-# Ensure deployment templates directory exists
-RUN chown -R $WWWUSER:$WWWGROUP /var/www/html/deployment/templates
+RUN chmod +x /usr/local/bin/startup.sh \
+    /usr/local/bin/generate-env.sh
 
-# Switch back to non-root user
-USER $WWWUSER
+# Install sudo
+RUN apk add --no-cache sudo
 
-# Expose port
-EXPOSE 8000
+# Configure sudo access
+RUN echo "sail ALL=(ALL) NOPASSWD: /bin/chown, /bin/chmod, /usr/bin/find" >> /etc/sudoers
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:9000/up || exit 1
+# Install Python for deployment scripts
+RUN apk add --no-cache python3 py3-yaml
 
-# Start application
-ENTRYPOINT ["/usr/local/bin/startup.sh"]
+USER sail
+
+EXPOSE 9000
+
+ENTRYPOINT ["/bin/bash", "/usr/local/bin/startup.sh"]
