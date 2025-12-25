@@ -62,8 +62,8 @@ staging_vars:
   # /srv/apps/.config/staging/laravel/billeterie.env
   session_domain: &stg_session_domain "{{{STAGING_SESSION_DOMAIN}}}"
   origin: &stg_origin "https://billeterie.anohou.dev"
-  url_path: &stg_url_path "/billeterie-stg-8JBhsYHuLb9BQYULcuvBYsF9m4kvz5XVcVDeGaQ1"
-  url: &stg_url "https://billeterie.anohou.dev}/billeterie-stg-8JBhsYHuLb9BQYULcuvBYsF9m4kvz5XVcVDeGaQ1"
+  url_path: &stg_url_path "/billeterie-stg-2i13qj6JMZIS8gMz7P1wJan1ib3MMUO85DTLPMgL"
+  url: &stg_url "https://billeterie.anohou.dev}/billeterie-stg-2i13qj6JMZIS8gMz7P1wJan1ib3MMUO85DTLPMgL"
 
 # Production environment variables
 production_vars:
@@ -76,8 +76,8 @@ production_vars:
   cors_origins: &prod_cors_origins "{{{PRODUCTION_CORS_ORIGINS}}}"
   sanctum_domains: &prod_sanctum_domains "{{{PRODUCTION_SANCTUM_DOMAINS}}}"
   session_domain: &prod_session_domain "{{{PRODUCTION_SESSION_DOMAIN}}}"
-  url_path: &prod_url_path "/billeterie-prod-QmZGiD3aVteAoQVAsYvVMjs692ks6EZiYxaFeRcD"
-  url: &prod_url "https://billeterie.anohou.dev}/billeterie-prod-QmZGiD3aVteAoQVAsYvVMjs692ks6EZiYxaFeRcD"
+  url_path: &prod_url_path "/billeterie-prod-Od4k2AsQbPV1Z0iQ0hrfIKnVmBYTtAgZhXaUPRYB"
+  url: &prod_url "https://billeterie.anohou.dev}/billeterie-prod-Od4k2AsQbPV1Z0iQ0hrfIKnVmBYTtAgZhXaUPRYB"
 
 # =============================================================================
 # 🐳 DOCKER & RUNTIME CONFIGURATION

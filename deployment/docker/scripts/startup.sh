@@ -87,7 +87,8 @@ done
 
 # Set permissions
 echo "[Startup] Setting permissions..."
-chmod -R 775 storage bootstrap/cache
+# Files are already owned by sail from Docker build
+chmod -R 775 storage bootstrap/cache 2>/dev/null || true
 
 echo "[Startup] Starting Supervisor..."
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf

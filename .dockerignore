@@ -4,6 +4,8 @@ bootstrap/cache/
 storage/
 # Ignore node modules - use multi-stage build
 node_modules/
+# Ignore built frontend assets - copied separately from frontend-builder stage
+public/build/
 # Ignore local .env - generated from template in container
 .env
 .env.local
