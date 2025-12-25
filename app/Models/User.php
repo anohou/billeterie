@@ -25,7 +25,7 @@ class User extends Authenticatable
         'telephone',
         'password',
         'role',
-        'station_id',
+        'active',
     ];
 
     /**
@@ -48,6 +48,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'active' => 'boolean',
         ];
     }
 
@@ -81,5 +82,15 @@ class User extends Authenticatable
     public function soldTickets()
     {
         return $this->hasMany(Ticket::class, 'seller_id');
+    }
+
+    public function stationAssignments()
+    {
+        return $this->hasMany(UserStationAssignment::class);
+    }
+
+    public function assignedStations()
+    {
+        return $this->belongsToMany(Station::class, 'user_station_assignments');
     }
 }

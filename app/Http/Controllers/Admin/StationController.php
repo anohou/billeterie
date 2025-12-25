@@ -14,7 +14,23 @@ class StationController extends Controller
      */
     public function index()
     {
-        $stations = Station::orderBy('name')->paginate(20);
+        $stations = Station::with([
+            'userAssignments.user',
+            'originRoutes.destinationStation',
+            'originRoutes.originStation',
+            'originRoutes.routeStopOrders.stop.station',
+            'destinationRoutes.originStation',
+            'destinationRoutes.destinationStation',
+            'destinationRoutes.routeStopOrders.stop.station',
+            // Load all routes this station's stops are on, with full stop ordering
+            'stops.routeStopOrders.route.routeStopOrders.stop.station',
+            'stops.routeStopOrders.route.originStation',
+            'stops.routeStopOrders.route.destinationStation'
+        ])
+        ->withCount(['userAssignments', 'originRoutes', 'destinationRoutes', 'stops'])
+        ->orderBy('name')
+        ->paginate(50);
+        
         return Inertia::render('Admin/Stations/Index', [
             'stations' => $stations,
         ]);

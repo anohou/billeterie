@@ -125,7 +125,7 @@ const submit = () => {
 };
 
 const deleteStop = (id) => {
-  if (confirm('Êtes-vous sûr de vouloir supprimer cet arrêt ?')) {
+  if (confirm('Êtes-vous sûr de vouloir supprimer cette destination ?')) {
     router.delete(route('admin.stops.destroy', id), {
       onSuccess: () => {
         if (selectedStop.value?.id === id) {
@@ -143,7 +143,7 @@ const deleteStop = (id) => {
       <!-- Header -->
       <div class="bg-gradient-to-r from-green-50 to-orange-50/30 border-b border-orange-200 px-4 py-2 mb-4">
         <h1 class="text-2xl font-bold text-green-700">Paramètres</h1>
-        <p class="mt-1 text-sm text-green-600">Gestion des Arrêts</p>
+        <p class="mt-1 text-sm text-green-600">Gestion des Destinations</p>
       </div>
 
       <!-- Three Column Layout -->
@@ -164,7 +164,7 @@ const deleteStop = (id) => {
                     class="w-full px-4 py-2 pl-10 pr-4 border border-orange-200 rounded-lg focus:outline-none focus:border-orange-400 text-sm" />
                   <Magnify class="absolute left-3 top-2.5 h-4 w-4 text-orange-400" />
                 </div>
-                <button @click="openCreateModal" class="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors" title="Nouvel Arrêt">
+                <button @click="openCreateModal" class="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors" title="Nouvelle Destination">
                   <Plus class="h-5 w-5" />
                 </button>
               </div>
@@ -173,7 +173,7 @@ const deleteStop = (id) => {
             <!-- List Content -->
             <div class="overflow-y-auto flex-1">
               <div v-if="filteredStops.length === 0" class="p-4 text-center text-gray-500">
-                Aucun arrêt trouvé.
+                Aucune destination trouvée.
               </div>
               <div v-else>
                 <div v-for="stop in filteredStops" :key="stop.id" 
@@ -187,14 +187,8 @@ const deleteStop = (id) => {
                   <div class="flex justify-between items-start">
                     <div>
                       <h3 :class="['font-semibold', isSelected(stop) ? 'text-green-800' : 'text-gray-800']">{{ stop.name }}</h3>
-                      <p class="text-xs text-gray-500 mt-1">{{ stop.city }}</p>
+                      <p v-if="stop.station" class="text-xs text-gray-500 mt-1">{{ stop.station.name }}</p>
                     </div>
-                    <span :class="[
-                      'px-2 py-0.5 rounded-full text-[10px] font-medium',
-                      stop.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    ]">
-                      {{ stop.active ? 'Active' : 'Inactive' }}
-                    </span>
                   </div>
                 </div>
               </div>
@@ -207,9 +201,9 @@ const deleteStop = (id) => {
           <!-- Empty State -->
           <div v-if="!selectedStop" class="bg-white rounded-lg border border-orange-200 shadow-sm p-8 text-center h-full flex flex-col items-center justify-center text-gray-500">
             <MapMarkerRadius class="h-16 w-16 text-orange-200 mb-4" />
-            <p class="text-lg">Sélectionnez un arrêt pour voir les détails</p>
+            <p class="text-lg">Sélectionnez une destination pour voir les détails</p>
             <button @click="openCreateModal" class="mt-4 text-green-600 hover:text-green-700 font-medium">
-              ou créez un nouvel arrêt
+              ou créez une nouvelle destination
             </button>
           </div>
 
@@ -248,12 +242,12 @@ const deleteStop = (id) => {
     <!-- Modal -->
     <DialogModal :show="showModal" @close="closeModal">
       <template #title>
-        {{ isEditing ? 'Modifier l\'Arrêt' : 'Nouvel Arrêt' }}
+        {{ isEditing ? 'Modifier la Destination' : 'Nouvelle Destination' }}
       </template>
       <template #content>
         <div class="space-y-4">
           <div>
-            <InputLabel for="name" value="Nom de l'arrêt" />
+            <InputLabel for="name" value="Nom de la destination" />
             <TextInput v-model="form.name" id="name" class="w-full" placeholder="Ex: Carrefour Jeunesse" />
             <InputError :message="errors.name" />
           </div>

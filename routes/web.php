@@ -9,12 +9,7 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::get('/', function () {
-    return Inertia::render('Welcome', [
-        'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
-    ]);
+    return redirect()->route('login');
 });
 
 Route::get('/dashboard', function () {
@@ -51,7 +46,8 @@ Route::middleware('auth')->group(function () {
         Route::resource('trips', \App\Http\Controllers\Admin\TripController::class);
         Route::resource('route-fares', \App\Http\Controllers\Admin\RouteFareController::class);
         Route::resource('users', \App\Http\Controllers\Admin\UserController::class);
-        Route::resource('assignments', \App\Http\Controllers\Admin\UserAssignmentController::class)->only(['index','store','destroy']);
+        Route::put('users/{user}/toggle-active', [\App\Http\Controllers\Admin\UserController::class, 'toggleActive'])->name('users.toggle-active');
+        Route::resource('assignments', \App\Http\Controllers\Admin\UserAssignmentController::class)->only(['index','store','update','destroy']);
         
         // Ticket Settings
         Route::get('ticket-settings', [\App\Http\Controllers\Admin\TicketSettingController::class, 'index'])->name('ticket-settings.index');

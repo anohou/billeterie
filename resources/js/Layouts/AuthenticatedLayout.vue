@@ -216,7 +216,7 @@
                             </div>
                             <div class="ml-4 space-y-1">
                                 <ResponsiveNavLink :href="route('admin.stations.index')" class="text-green-700 hover:bg-green-50">
-                                    Stations
+                                    Gares
                                 </ResponsiveNavLink>
                                 <ResponsiveNavLink :href="route('admin.routes.index')" class="text-green-700 hover:bg-green-50">
                                     Routes

@@ -25,7 +25,7 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
-  routes: {
+  stations: {
     type: Array,
     default: () => []
   }
@@ -41,7 +41,7 @@ const isEditing = ref(false);
 
 const form = ref({
   user_id: '',
-  route_id: '',
+  station_id: '',
   active: true
 });
 
@@ -54,7 +54,8 @@ const filteredAssignments = computed(() => {
   return assignments.filter(assignment =>
     assignment.user?.name.toLowerCase().includes(searchTerm) ||
     assignment.user?.email.toLowerCase().includes(searchTerm) ||
-    assignment.route?.name.toLowerCase().includes(searchTerm)
+    assignment.station?.name.toLowerCase().includes(searchTerm) ||
+    assignment.station?.city?.toLowerCase().includes(searchTerm)
   );
 });
 
@@ -82,7 +83,7 @@ const openCreateModal = () => {
   isEditing.value = false;
   form.value = {
     user_id: '',
-    route_id: '',
+    station_id: '',
     active: true
   };
   errors.value = {};
@@ -94,7 +95,7 @@ const openEditModal = () => {
   isEditing.value = true;
   form.value = {
     user_id: selectedAssignment.value.user_id,
-    route_id: selectedAssignment.value.route_id,
+    station_id: selectedAssignment.value.station_id,
     active: selectedAssignment.value.active
   };
   errors.value = {};
@@ -105,7 +106,7 @@ const closeModal = () => {
   showModal.value = false;
   form.value = {
     user_id: '',
-    route_id: '',
+    station_id: '',
     active: true
   };
   errors.value = {};
@@ -134,7 +135,7 @@ const submit = () => {
 };
 
 const deleteAssignment = (id) => {
-  if (confirm('Êtes-vous sûr de vouloir supprimer cette assignation ?')) {
+  if (confirm('Êtes-vous sûr de vouloir supprimer cette affectation ?')) {
     router.delete(route('admin.assignments.destroy', id), {
       onSuccess: () => {
         if (selectedAssignment.value?.id === id) {
@@ -155,7 +156,7 @@ const deleteAssignment = (id) => {
       <!-- Header -->
       <div class="bg-gradient-to-r from-green-50 to-orange-50/30 border-b border-orange-200 px-4 py-2 mb-4">
         <h1 class="text-2xl font-bold text-green-700">Paramètres</h1>
-        <p class="mt-1 text-sm text-green-600">Gestion des Assignations</p>
+        <p class="mt-1 text-sm text-green-600">Affectations Utilisateurs - Gares</p>
       </div>
 
       <!-- Three Column Layout -->
@@ -176,7 +177,7 @@ const deleteAssignment = (id) => {
                     class="w-full px-4 py-2 pl-10 pr-4 border border-orange-200 rounded-lg focus:outline-none focus:border-orange-400 text-sm" />
                   <Magnify class="absolute left-3 top-2.5 h-4 w-4 text-orange-400" />
                 </div>
-                <button @click="openCreateModal" class="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors" title="Nouvelle Assignation">
+                <button @click="openCreateModal" class="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors" title="Nouvelle Affectation">
                   <Plus class="h-5 w-5" />
                 </button>
               </div>
@@ -185,7 +186,7 @@ const deleteAssignment = (id) => {
             <!-- List Content -->
             <div class="overflow-y-auto flex-1">
               <div v-if="filteredAssignments.length === 0" class="p-4 text-center text-gray-500">
-                Aucune assignation trouvée.
+                Aucune affectation trouvée.
               </div>
               <div v-else>
                 <div v-for="assignment in filteredAssignments" :key="assignment.id" 
@@ -196,13 +197,15 @@ const deleteAssignment = (id) => {
                     borderLeft: isSelected(assignment) ? '4px solid #16a34a' : '4px solid #fed7aa'
                   }"
                 >
-                  <div class="flex justify-between items-start">
-                    <div>
-                      <h3 :class="['font-semibold', isSelected(assignment) ? 'text-green-800' : 'text-gray-800']">{{ assignment.trip?.route?.name }}</h3>
-                      <p class="text-xs text-gray-500 mt-1">{{ assignment.vehicle?.registration_number }} - {{ assignment.driver?.name }}</p>
+                  <div class="flex justify-between items-center">
+                    <div class="flex-1 min-w-0">
+                      <h3 :class="['font-semibold truncate', isSelected(assignment) ? 'text-green-800' : 'text-gray-800']">
+                        {{ assignment.user?.name }}
+                      </h3>
+                      <p class="text-xs text-gray-500 mt-0.5">{{ assignment.station?.name }} - {{ assignment.station?.city }}</p>
                     </div>
                     <span :class="[
-                      'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
+                      'shrink-0 ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
                       assignment.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                     ]">
                       {{ assignment.active ? 'Active' : 'Inactive' }}
@@ -219,9 +222,9 @@ const deleteAssignment = (id) => {
           <!-- Empty State -->
           <div v-if="!selectedAssignment" class="bg-white rounded-lg border border-orange-200 shadow-sm p-8 text-center h-full flex flex-col items-center justify-center text-gray-500">
             <AccountCheck class="h-16 w-16 text-orange-200 mb-4" />
-            <p class="text-lg">Sélectionnez une assignation pour voir les détails</p>
+            <p class="text-lg">Sélectionnez une affectation pour voir les détails</p>
             <button @click="openCreateModal" class="mt-4 text-green-600 hover:text-green-700 font-medium">
-              ou créez une nouvelle assignation
+              ou créez une nouvelle affectation
             </button>
           </div>
 
@@ -231,7 +234,7 @@ const deleteAssignment = (id) => {
             <div class="bg-white rounded-lg border border-orange-200 shadow-sm p-6">
               <!-- Header Row -->
               <div class="flex justify-between items-start mb-6">
-                <h2 class="text-2xl font-bold text-gray-800">Détails de l'Assignation</h2>
+                <h2 class="text-2xl font-bold text-gray-800">Détails de l'Affectation</h2>
                 <div class="flex gap-2">
                   <button @click="openEditModal" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Modifier">
                     <Pencil class="h-5 w-5" />
@@ -252,11 +255,19 @@ const deleteAssignment = (id) => {
                   <div class="text-sm text-gray-500 mt-1">
                     {{ selectedAssignment.user?.email }}
                   </div>
+                  <div class="mt-1">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                      {{ selectedAssignment.user?.role }}
+                    </span>
+                  </div>
                 </div>
                 <div class="col-span-6">
-                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">ROUTE</span>
+                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">GARE</span>
                   <div class="text-xl font-bold text-gray-900 leading-tight">
-                    {{ selectedAssignment.route?.name }}
+                    {{ selectedAssignment.station?.name }}
+                  </div>
+                  <div class="text-sm text-gray-500 mt-1">
+                    {{ selectedAssignment.station?.city }}
                   </div>
                 </div>
                 <div class="col-span-12">
@@ -280,7 +291,7 @@ const deleteAssignment = (id) => {
     <!-- Modal -->
     <DialogModal :show="showModal" @close="closeModal">
       <template #title>
-        {{ isEditing ? 'Modifier l\'Assignation' : 'Nouvelle Assignation' }}
+        {{ isEditing ? 'Modifier l\'Affectation' : 'Nouvelle Affectation' }}
       </template>
       <template #content>
         <div class="space-y-4">
@@ -305,23 +316,23 @@ const deleteAssignment = (id) => {
           </div>
 
           <div>
-            <InputLabel for="route_id" value="Route" />
+            <InputLabel for="station_id" value="Gare" />
             <select
-              id="route_id"
-              v-model="form.route_id"
+              id="station_id"
+              v-model="form.station_id"
               class="w-full px-3 py-1.5 border border-orange-200 rounded-lg focus:border-green-500 focus:ring-green-500 text-sm"
               required
             >
-              <option value="">Sélectionner une route</option>
+              <option value="">Sélectionner une gare</option>
               <option
-                v-for="route in routes"
-                :key="route.id"
-                :value="route.id"
+                v-for="station in stations"
+                :key="station.id"
+                :value="station.id"
               >
-                {{ route.name }}
+                {{ station.name }} - {{ station.city }}
               </option>
             </select>
-            <InputError :message="errors.route_id" />
+            <InputError :message="errors.station_id" />
           </div>
 
           <div class="flex items-center">

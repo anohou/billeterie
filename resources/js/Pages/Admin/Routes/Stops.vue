@@ -43,9 +43,9 @@ const submit = () => {
 };
 
 const deleteStop = (stopOrder) => {
-  if (confirm('Êtes-vous sûr de vouloir retirer cet arrêt de la route ?')) {
+  if (confirm('Êtes-vous sûr de vouloir retirer cette destination de la route ?')) {
     router.delete(route('admin.routes.stops.destroy', [props.routeModel.id, stopOrder.id]), {
-      onError: () => alert('Impossible de supprimer cet arrêt.')
+      onError: () => alert('Impossible de supprimer cette destination.')
     });
   }
 };
@@ -61,7 +61,7 @@ const deleteStop = (stopOrder) => {
             <ArrowLeft class="w-6 h-6" />
           </Link>
           <div>
-            <h1 class="text-2xl font-bold text-green-700">Arrêts de la Route</h1>
+            <h1 class="text-2xl font-bold text-green-700">Destinations de la Route</h1>
             <p class="mt-1 text-sm text-green-600">{{ routeModel.name }}</p>
           </div>
         </div>
@@ -78,7 +78,7 @@ const deleteStop = (stopOrder) => {
         <div class="col-span-12 md:col-span-6">
           <div class="bg-white rounded-lg border border-orange-200 shadow-sm">
             <div class="border-b border-orange-200 p-3 bg-gradient-to-r from-green-50 to-orange-50/30">
-              <h2 class="text-lg font-semibold text-green-700">Liste des Arrêts ({{ stops.length }})</h2>
+              <h2 class="text-lg font-semibold text-green-700">Liste des Destinations ({{ stops.length }})</h2>
             </div>
 
             <div class="overflow-x-auto">
@@ -86,7 +86,7 @@ const deleteStop = (stopOrder) => {
                 <thead class="bg-green-50">
                   <tr>
                     <th class="px-3 py-2 text-left text-sm font-semibold text-green-700">Ordre</th>
-                    <th class="px-3 py-2 text-left text-sm font-semibold text-green-700">Arrêt</th>
+                    <th class="px-3 py-2 text-left text-sm font-semibold text-green-700">Destination</th>
                     <th class="px-3 py-2 text-left text-sm font-semibold text-green-700">Ville</th>
                     <th class="px-3 py-2 text-right text-sm font-semibold text-green-700">Actions</th>
                   </tr>
@@ -95,7 +95,7 @@ const deleteStop = (stopOrder) => {
                   <tr v-if="stops.length === 0">
                     <td colspan="4" class="px-3 py-3 text-center text-gray-500">
                       <div class="rounded-lg bg-orange-50 p-1 text-orange-700">
-                        Aucun arrêt configuré pour cette route.
+                        Aucune destination configurée pour cette route.
                       </div>
                     </td>
                   </tr>
@@ -127,17 +127,17 @@ const deleteStop = (stopOrder) => {
         <div class="col-span-12 md:col-span-4">
           <div class="bg-white rounded-lg border border-orange-200 shadow-sm p-4">
             <h2 class="text-lg font-semibold text-green-700 mb-4">
-              Ajouter un arrêt
+              Ajouter une destination
             </h2>
 
             <form @submit.prevent="submit">
               <div class="space-y-3">
                 <div>
-                  <InputLabel for="stop_id" value="Sélectionner un arrêt" />
+                  <InputLabel for="stop_id" value="Sélectionner une destination" />
                   <select v-model="form.stop_id" id="stop_id"
                     class="w-full border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                     :class="{ 'border-red-500': errors.stop_id }">
-                    <option value="">Choisir un arrêt...</option>
+                    <option value="">Choisir une destination...</option>
                     <option v-for="stop in availableStops" :key="stop.id" :value="stop.id">
                       {{ stop.name }} ({{ stop.city }})
                     </option>
@@ -165,7 +165,7 @@ const deleteStop = (stopOrder) => {
                     </span>
                     <span v-else class="flex items-center">
                       <MapMarkerRadius class="w-5 h-5 mr-1" />
-                      Ajouter l'arrêt
+                      Ajouter la destination
                     </span>
                   </button>
                 </div>

@@ -16,6 +16,9 @@ import Trash2 from 'vue-material-design-icons/Delete.vue';
 import Pencil from 'vue-material-design-icons/Pencil.vue';
 import Plus from 'vue-material-design-icons/Plus.vue';
 import MapMarkerRadius from 'vue-material-design-icons/MapMarkerRadius.vue';
+import Account from 'vue-material-design-icons/Account.vue';
+import RouteIcon from 'vue-material-design-icons/Routes.vue';
+import MapMarker from 'vue-material-design-icons/MapMarker.vue';
 
 const props = defineProps({
   stations: {
@@ -31,6 +34,7 @@ const processing = ref(false);
 const errors = ref({});
 const showModal = ref(false);
 const isEditing = ref(false);
+const activeTab = ref('destinations');
 
 const form = ref({
   code: '',
@@ -40,6 +44,13 @@ const form = ref({
   active: true
 });
 
+// Tabs configuration - only related tables, not details
+const tabs = [
+  { id: 'destinations', label: 'Destinations', icon: MapMarker },
+  { id: 'routes', label: 'Routes', icon: RouteIcon },
+  { id: 'sellers', label: 'Vendeurs', icon: Account, countKey: 'user_assignments_count' },
+];
+
 // Computed
 const filteredStations = computed(() => {
   const stations = props.stations?.data || [];
@@ -48,9 +59,90 @@ const filteredStations = computed(() => {
   const searchTerm = search.value.toLowerCase();
   return stations.filter(station =>
     station.name.toLowerCase().includes(searchTerm) ||
-    station.code.toLowerCase().includes(searchTerm) ||
-    station.city.toLowerCase().includes(searchTerm)
+    station.code?.toLowerCase().includes(searchTerm) ||
+    station.city?.toLowerCase().includes(searchTerm)
   );
+});
+
+// Get all unique destinations that can be served from/to this station (bidirectional)
+const servedDestinations = computed(() => {
+  if (!selectedStation.value) return [];
+  
+  const destinationsMap = new Map();
+  const stationId = selectedStation.value.id;
+  
+  // Find all routes that pass through stops belonging to this station
+  const stationStops = selectedStation.value.stops || [];
+  
+  stationStops.forEach(stop => {
+    const stopRouteOrders = stop.route_stop_orders || stop.routeStopOrders || [];
+    
+    stopRouteOrders.forEach(myStopOrder => {
+      const route = myStopOrder.route;
+      if (!route) return;
+      
+      const myIndex = myStopOrder.stop_index ?? myStopOrder.stopIndex ?? 0;
+      
+      // Get all stops on this route
+      const allStopOrders = route.route_stop_orders || route.routeStopOrders || [];
+      
+      // Process all stops on this route (both forward and backward)
+      allStopOrders.forEach(order => {
+        const orderIndex = order.stop_index ?? order.stopIndex ?? 0;
+        
+        // Skip if it's the same position (our stop) or same station
+        if (orderIndex === myIndex || !order.stop || order.stop.station_id === stationId) {
+          return;
+        }
+        
+        const stopId = order.stop.id;
+        
+        // Only add if not already in the map
+        if (!destinationsMap.has(stopId)) {
+          destinationsMap.set(stopId, {
+            id: stopId,
+            name: order.stop.name,
+            city: order.stop.station?.city || 'N/A'
+          });
+        }
+      });
+    });
+  });
+  
+  // Sort alphabetically by name
+  return Array.from(destinationsMap.values()).sort((a, b) => {
+    return a.name.localeCompare(b.name, 'fr');
+  });
+});
+
+// Get all routes that pass through this station (via its stops)
+const allRoutes = computed(() => {
+  if (!selectedStation.value) return [];
+  
+  const routesMap = new Map();
+  const stationStops = selectedStation.value.stops || [];
+  
+  stationStops.forEach(stop => {
+    const stopRouteOrders = stop.route_stop_orders || stop.routeStopOrders || [];
+    
+    stopRouteOrders.forEach(stopOrder => {
+      const route = stopOrder.route;
+      if (route && !routesMap.has(route.id)) {
+        routesMap.set(route.id, {
+          id: route.id,
+          name: route.name,
+          origin: route.origin_station?.name || 'N/A',
+          destination: route.destination_station?.name || 'N/A',
+          active: route.active
+        });
+      }
+    });
+  });
+  
+  // Sort alphabetically by name
+  return Array.from(routesMap.values()).sort((a, b) => {
+    return a.name.localeCompare(b.name, 'fr');
+  });
 });
 
 // Watchers
@@ -63,6 +155,11 @@ watch(() => props.stations, (newStations) => {
   }
 }, { deep: true });
 
+// Reset tab when selecting new station
+watch(selectedStation, () => {
+  activeTab.value = 'destinations';
+});
+
 // Methods
 const isSelected = (station) => {
   if (!selectedStation.value) return false;
@@ -71,6 +168,25 @@ const isSelected = (station) => {
 
 const selectStation = (station) => {
   selectedStation.value = station;
+};
+
+const getTabCount = (tab) => {
+  if (!selectedStation.value) return null;
+  
+  // Handle computed property counts
+  if (tab.id === 'destinations') {
+    return servedDestinations.value.length;
+  }
+  if (tab.id === 'routes') {
+    return allRoutes.value.length;
+  }
+  
+  // Handle backend counts
+  if (tab.countKey) {
+    return selectedStation.value[tab.countKey] || 0;
+  }
+  
+  return null;
 };
 
 const openCreateModal = () => {
@@ -204,18 +320,21 @@ const deleteStation = (id) => {
                   }"
                 >
                   <div class="flex justify-between items-start">
-                    <div>
-                      <h3 :class="['font-semibold', isSelected(station) ? 'text-green-800' : 'text-gray-800']">{{ station.name }}</h3>
+                    <div class="flex-1 min-w-0">
+                      <h3 :class="['font-semibold truncate', isSelected(station) ? 'text-green-800' : 'text-gray-800']">{{ station.name }}</h3>
                       <p class="text-xs text-gray-500 mt-1">
                         {{ station.city }} ({{ station.code }})
                       </p>
                     </div>
-                    <span :class="[
-                      'px-2 py-0.5 rounded-full text-[10px] font-medium',
-                      station.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    ]">
-                      {{ station.active ? 'Active' : 'Inactive' }}
-                    </span>
+                    <div class="flex items-center gap-2 shrink-0">
+                      <span class="text-xs text-gray-400">{{ station.user_assignments_count || 0 }} vendeurs</span>
+                      <span :class="[
+                        'px-2 py-0.5 rounded-full text-[10px] font-medium',
+                        station.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      ]">
+                        {{ station.active ? 'Active' : 'Inactive' }}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -234,14 +353,22 @@ const deleteStation = (id) => {
             </button>
           </div>
 
-          <!-- View Details -->
+          <!-- View Details (when station selected) -->
           <div v-else class="space-y-4">
-            <!-- Details Card -->
-            <div class="bg-white rounded-lg border border-orange-200 shadow-sm p-6">
-              <!-- Header Row -->
-              <div class="flex justify-between items-start mb-6">
-                <h2 class="text-2xl font-bold text-gray-800">{{ selectedStation.name }}</h2>
+            <!-- Details Card (always visible) -->
+            <div class="bg-white rounded-lg border border-orange-200 shadow-sm p-4">
+              <div class="flex justify-between items-start mb-4">
+                <div>
+                  <h2 class="text-2xl font-bold text-gray-800">{{ selectedStation.name }}</h2>
+                  <p class="text-sm text-gray-500">{{ selectedStation.city }} - {{ selectedStation.code }}</p>
+                </div>
                 <div class="flex gap-2">
+                  <span :class="[
+                    'px-3 py-1 rounded-full text-xs font-semibold',
+                    selectedStation.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  ]">
+                    {{ selectedStation.active ? 'Active' : 'Inactive' }}
+                  </span>
                   <button @click="openEditModal" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Modifier">
                     <Pencil class="h-5 w-5" />
                   </button>
@@ -250,37 +377,132 @@ const deleteStation = (id) => {
                   </button>
                 </div>
               </div>
-
-              <!-- Details Row -->
-              <div class="grid grid-cols-12 gap-6 mb-6">
+              
+              <!-- Details Grid -->
+              <div class="grid grid-cols-12 gap-4 pt-2 border-t border-gray-100">
                 <div class="col-span-6">
-                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">CODE</span>
-                  <div class="text-xl font-bold text-gray-900 leading-tight">
-                    {{ selectedStation.code }}
-                  </div>
+                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-1">CODE</span>
+                  <div class="text-lg font-medium text-gray-900">{{ selectedStation.code }}</div>
                 </div>
                 <div class="col-span-6">
-                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">VILLE</span>
-                  <div class="text-xl font-bold text-gray-900 leading-tight">
-                    {{ selectedStation.city }}
-                  </div>
+                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-1">VILLE</span>
+                  <div class="text-lg font-medium text-gray-900">{{ selectedStation.city }}</div>
                 </div>
                 <div class="col-span-12">
-                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">ADRESSE</span>
-                  <div class="text-base text-gray-700">
-                    {{ selectedStation.address || 'Non renseignée' }}
-                  </div>
+                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-1">ADRESSE</span>
+                  <div class="text-base text-gray-700">{{ selectedStation.address || 'Non renseignée' }}</div>
                 </div>
               </div>
+            </div>
 
-              <!-- Footer Row -->
-              <div>
-                 <span :class="[
-                  'px-3 py-1 rounded-full text-xs font-semibold',
-                  selectedStation.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                ]">
-                  {{ selectedStation.active ? 'Active' : 'Inactive' }}
-                </span>
+            <!-- Related Tables Tabs -->
+            <div class="bg-white rounded-lg border border-orange-200 shadow-sm">
+              <!-- Tab Headers -->
+              <div class="flex border-b border-orange-200 overflow-x-auto">
+                <button
+                  v-for="tab in tabs"
+                  :key="tab.id"
+                  @click="activeTab = tab.id"
+                  :class="[
+                    'flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+                    activeTab === tab.id 
+                      ? 'border-green-600 text-green-700 bg-green-50/50' 
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  ]"
+                >
+                  <component :is="tab.icon" class="h-4 w-4" />
+                  {{ tab.label }}
+                  <span 
+                    v-if="getTabCount(tab) !== null"
+                    :class="[
+                      'px-1.5 py-0.5 rounded-full text-[10px] font-bold',
+                      activeTab === tab.id ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'
+                    ]"
+                  >
+                    {{ getTabCount(tab) }}
+                  </span>
+                </button>
+              </div>
+
+              <!-- Tab Content -->
+              <div class="p-4">
+                <!-- Destinations Tab -->
+                <div v-if="activeTab === 'destinations'">
+                  <div v-if="servedDestinations.length === 0" class="text-center py-6 text-gray-400">
+                    Aucune destination configurée pour cette station
+                  </div>
+                  <div v-else class="space-y-2">
+                    <div 
+                      v-for="dest in servedDestinations" 
+                      :key="dest.id"
+                      class="flex items-center p-3 bg-gray-50 rounded-lg"
+                    >
+                      <MapMarker class="h-6 w-6 text-orange-500 mr-3" />
+                      <div>
+                        <p class="font-medium text-gray-800">{{ dest.name }}</p>
+                        <p class="text-xs text-gray-500">{{ dest.city }}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Sellers Tab -->
+                <div v-else-if="activeTab === 'sellers'">
+                  <div v-if="!selectedStation.user_assignments?.length" class="text-center py-6 text-gray-400">
+                    Aucun vendeur affecté à cette station
+                  </div>
+                  <div v-else class="space-y-2">
+                    <div 
+                      v-for="assignment in selectedStation.user_assignments" 
+                      :key="assignment.id"
+                      class="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    >
+                      <div class="flex items-center gap-3">
+                        <Account class="h-8 w-8 text-gray-400" />
+                        <div>
+                          <p class="font-medium text-gray-800">{{ assignment.user?.name }}</p>
+                          <p class="text-xs text-gray-500">{{ assignment.user?.email }}</p>
+                        </div>
+                      </div>
+                      <span :class="[
+                        'px-2 py-0.5 rounded-full text-[10px] font-medium',
+                        assignment.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      ]">
+                        {{ assignment.active ? 'Actif' : 'Inactif' }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Routes Tab -->
+                <div v-else-if="activeTab === 'routes'">
+                  <div v-if="allRoutes.length === 0" class="text-center py-6 text-gray-400">
+                    Aucune route ne passe par cette station
+                  </div>
+                  <div v-else class="space-y-2">
+                    <div 
+                      v-for="route in allRoutes" 
+                      :key="route.id"
+                      class="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    >
+                      <div class="flex items-center gap-3">
+                        <RouteIcon class="h-6 w-6 text-blue-500" />
+                        <div>
+                          <p class="font-medium text-gray-800">{{ route.name }}</p>
+                          <p class="text-xs text-gray-500">
+                            {{ route.origin }} → {{ route.destination }}
+                          </p>
+                        </div>
+                      </div>
+                      <span :class="[
+                        'px-2 py-0.5 rounded-full text-[10px] font-medium',
+                        route.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      ]">
+                        {{ route.active ? 'Active' : 'Inactive' }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

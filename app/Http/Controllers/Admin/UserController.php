@@ -13,9 +13,15 @@ class UserController extends Controller
 {
     public function index()
     {
-        $users = User::orderBy('name')->paginate(20);
+        $users = User::with(['stationAssignments.station'])
+            ->orderBy('name')
+            ->paginate(20);
+            
+        $stations = \App\Models\Station::orderBy('name')->get(['id', 'name', 'city']);
+        
         return Inertia::render('Admin/Users/Index', [
             'users' => $users,
+            'stations' => $stations,
         ]);
     }
 
@@ -79,6 +85,16 @@ class UserController extends Controller
         }
 
         return redirect()->route('admin.users.index')->with('success', 'Utilisateur mis à jour avec succès.');
+    }
+
+    public function toggleActive(User $user)
+    {
+        if ($user->id === auth()->id()) {
+            return back()->with('error', 'Vous ne pouvez pas désactiver votre propre compte.');
+        }
+
+        $user->update(['active' => !$user->active]);
+        return back()->with('success', $user->active ? 'Utilisateur activé.' : 'Utilisateur désactivé.');
     }
 
     public function destroy(User $user)

@@ -12,6 +12,9 @@ import Plus from 'vue-material-design-icons/Plus.vue'
 import Pencil from 'vue-material-design-icons/Pencil.vue'
 import ChevronDown from 'vue-material-design-icons/ChevronDown.vue'
 import ChevronRight from 'vue-material-design-icons/ChevronRight.vue'
+import ArrowUp from 'vue-material-design-icons/ArrowUp.vue'
+import ArrowDown from 'vue-material-design-icons/ArrowDown.vue'
+import Bus from 'vue-material-design-icons/Bus.vue'
 import TextInput from '@/Components/TextInput.vue'
 import InputError from '@/Components/InputError.vue'
 import InputLabel from '@/Components/InputLabel.vue'
@@ -29,6 +32,10 @@ const props = defineProps({
     default: () => []
   },
   stops: {
+    type: Array,
+    default: () => []
+  },
+  fares: {
     type: Array,
     default: () => []
   }
@@ -49,6 +56,7 @@ const isEditingRoute = ref(false);
 // Foldable Sections State
 const showStops = ref(false);
 const showFares = ref(false);
+const showTrips = ref(false);
 
 // Forms
 const routeForm = ref({
@@ -66,7 +74,8 @@ const stopForm = ref({
 const fareForm = ref({
   from_stop_id: '',
   to_stop_id: '',
-  amount: ''
+  amount: '',
+  is_bidirectional: true
 });
 
 // Computed
@@ -80,6 +89,34 @@ const filteredRoutes = computed(() => {
   );
 });
 
+// Compute fares that match the selected route's stops
+const matchedFares = computed(() => {
+  if (!selectedRoute.value) return [];
+  
+  // Get all stop IDs for this route
+  const routeStops = selectedRoute.value.route_stop_orders || selectedRoute.value.routeStopOrders || [];
+  const stopIds = new Set(routeStops.map(rs => rs.stop?.id).filter(Boolean));
+  
+  if (stopIds.size === 0) return [];
+  
+  // Find fares where both from_stop and to_stop are in the route
+  return props.fares.filter(fare => {
+    const fromInRoute = stopIds.has(fare.from_stop_id);
+    const toInRoute = stopIds.has(fare.to_stop_id);
+    
+    if (fromInRoute && toInRoute) return true;
+    
+    // Also check bidirectional (reverse direction)
+    if (fare.is_bidirectional) {
+      const reverseFromInRoute = stopIds.has(fare.to_stop_id);
+      const reverseToInRoute = stopIds.has(fare.from_stop_id);
+      if (reverseFromInRoute && reverseToInRoute) return true;
+    }
+    
+    return false;
+  });
+});
+
 // Methods - Route Selection
 const isSelected = (route) => {
   if (!selectedRoute.value) return false;
@@ -90,6 +127,7 @@ const selectRoute = (route) => {
   selectedRoute.value = route;
   showStops.value = false;
   showFares.value = false;
+  showTrips.value = false;
 };
 
 // Methods - Route Actions
@@ -201,22 +239,65 @@ const addStop = () => {
 };
 
 const removeStop = (stopOrder) => {
-  if (!confirm('Retirer cet arrêt ?')) return;
+  if (!confirm('Retirer cette destination ?')) return;
   router.delete(route('admin.routes.stops.destroy', [selectedRoute.value.id, stopOrder.id]), {
+    preserveScroll: true
+  });
+};
+
+const moveStopUp = (idx) => {
+  if (idx <= 0 || !selectedRoute.value) return;
+  
+  const stops = selectedRoute.value.route_stop_orders || selectedRoute.value.routeStopOrders || [];
+  if (stops.length < 2) return;
+  
+  // Swap stop at idx with stop at idx-1
+  const orders = [
+    { id: stops[idx].id, stop_index: idx - 1 },
+    { id: stops[idx - 1].id, stop_index: idx }
+  ];
+  
+  router.put(route('admin.routes.stops.reorder', selectedRoute.value.id), { orders }, {
+    preserveScroll: true
+  });
+};
+
+const moveStopDown = (idx) => {
+  if (!selectedRoute.value) return;
+  
+  const stops = selectedRoute.value.route_stop_orders || selectedRoute.value.routeStopOrders || [];
+  if (idx >= stops.length - 1 || stops.length < 2) return;
+  
+  // Swap stop at idx with stop at idx+1
+  const orders = [
+    { id: stops[idx].id, stop_index: idx + 1 },
+    { id: stops[idx + 1].id, stop_index: idx }
+  ];
+  
+  router.put(route('admin.routes.stops.reorder', selectedRoute.value.id), { orders }, {
     preserveScroll: true
   });
 };
 
 // Methods - Fares
 const openAddFareModal = () => {
-  fareForm.value = { from_stop_id: '', to_stop_id: '', amount: '' };
+  // Auto-set the origin from the route's first stop (origin station)
+  const routeStops = selectedRoute.value.route_stop_orders || selectedRoute.value.routeStopOrders || [];
+  const firstStop = routeStops.length > 0 ? routeStops[0].stop : null;
+  
+  fareForm.value = { 
+    from_stop_id: firstStop?.id || '', 
+    to_stop_id: '', 
+    amount: '',
+    is_bidirectional: true
+  };
   errors.value = {};
   showFareModal.value = true;
 };
 
 const closeFareModal = () => {
   showFareModal.value = false;
-  fareForm.value = { from_stop_id: '', to_stop_id: '', amount: '' };
+  fareForm.value = { from_stop_id: '', to_stop_id: '', amount: '', is_bidirectional: true };
   errors.value = {};
 };
 
@@ -224,10 +305,7 @@ const addFare = () => {
   if (!selectedRoute.value) return;
   processing.value = true;
   
-  router.post(route('admin.route-fares.store'), {
-    ...fareForm.value,
-    route_id: selectedRoute.value.id
-  }, {
+  router.post(route('admin.route-fares.store'), fareForm.value, {
     preserveScroll: true,
     onSuccess: () => {
       processing.value = false;
@@ -319,6 +397,9 @@ watch(() => props.routes, (newRoutes) => {
                     ]">
                       {{ routeItem.active ? 'Active' : 'Inactive' }}
                     </span>
+                    <span class="text-xs text-gray-400 ml-1">
+                      {{ routeItem.trips_count || 0 }} voyages
+                    </span>
                   </div>
                 </div>
               </div>
@@ -388,11 +469,11 @@ watch(() => props.routes, (newRoutes) => {
                 <div class="flex items-center gap-2">
                   <MapMarkerRadius class="h-5 w-5 text-orange-500" />
                   <h3 class="font-semibold text-gray-700">
-                    Arrêts ({{ (selectedRoute.route_stop_orders || selectedRoute.routeStopOrders || []).length }})
+                    Destinations ({{ (selectedRoute.route_stop_orders || selectedRoute.routeStopOrders || []).length }})
                   </h3>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button @click.stop="openAddStopModal" class="p-1 bg-green-100 text-green-700 rounded hover:bg-green-200" title="Ajouter un arrêt">
+                    <button @click.stop="openAddStopModal" class="p-1 bg-green-100 text-green-700 rounded hover:bg-green-200" title="Ajouter une destination">
                         <Plus class="h-4 w-4" />
                     </button>
                     <component :is="showStops ? ChevronDown : ChevronRight" class="h-5 w-5 text-gray-400" />
@@ -402,7 +483,7 @@ watch(() => props.routes, (newRoutes) => {
               <div v-if="showStops" class="p-4 border-t border-orange-100">
                 <div class="space-y-2">
                   <div v-if="(selectedRoute.route_stop_orders || selectedRoute.routeStopOrders || []).length === 0" class="text-sm text-gray-500 text-center py-2">
-                    Aucun arrêt configuré.
+                    Aucune destination configurée.
                   </div>
                   <div v-for="(order, idx) in (selectedRoute.route_stop_orders || selectedRoute.routeStopOrders || [])" :key="order.id" 
                     class="flex items-center justify-between p-2 bg-gray-50 rounded-md border border-gray-100">
@@ -415,9 +496,30 @@ watch(() => props.routes, (newRoutes) => {
                         <p class="text-xs text-gray-500">{{ order.stop?.station?.city || 'Ville inconnue' }}</p>
                       </div>
                     </div>
-                    <button @click="removeStop(order)" class="text-red-400 hover:text-red-600">
-                      <Trash2 class="h-4 w-4" />
-                    </button>
+                    <div class="flex items-center gap-1">
+                      <!-- Move Up Button -->
+                      <button 
+                        v-if="idx > 0"
+                        @click="moveStopUp(idx)" 
+                        class="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded"
+                        title="Monter">
+                        <ArrowUp class="h-4 w-4" />
+                      </button>
+                      <div v-else class="w-6"></div>
+                      <!-- Move Down Button -->
+                      <button 
+                        v-if="idx < (selectedRoute.route_stop_orders || selectedRoute.routeStopOrders || []).length - 1"
+                        @click="moveStopDown(idx)" 
+                        class="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded"
+                        title="Descendre">
+                        <ArrowDown class="h-4 w-4" />
+                      </button>
+                      <div v-else class="w-6"></div>
+                      <!-- Delete Button -->
+                      <button @click="removeStop(order)" class="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded ml-1">
+                        <Trash2 class="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -429,7 +531,7 @@ watch(() => props.routes, (newRoutes) => {
                 <div class="flex items-center gap-2">
                   <Cash class="h-5 w-5 text-green-600" />
                   <h3 class="font-semibold text-gray-700">
-                    Tarifs ({{ (selectedRoute.route_fares || selectedRoute.routeFares || []).length }})
+                    Tarifs ({{ matchedFares.length }})
                   </h3>
                 </div>
                 <div class="flex items-center gap-2">
@@ -442,22 +544,70 @@ watch(() => props.routes, (newRoutes) => {
               
               <div v-if="showFares" class="p-4 border-t border-orange-100">
                 <div class="space-y-2">
-                  <div v-if="(selectedRoute.route_fares || selectedRoute.routeFares || []).length === 0" class="text-sm text-gray-500 text-center py-2">
-                    Aucun tarif configuré.
+                  <div v-if="matchedFares.length === 0" class="text-sm text-gray-500 text-center py-2">
+                    Aucun tarif correspondant aux destinations de cette route.
                   </div>
-                  <div v-for="fare in (selectedRoute.route_fares || selectedRoute.routeFares || [])" :key="fare.id" 
+                  <div v-for="fare in matchedFares" :key="fare.id" 
                     class="flex items-center justify-between p-2 bg-gray-50 rounded-md border border-gray-100">
                     <div class="text-sm">
                       <span class="font-medium">{{ fare.from_stop?.name }}</span>
-                      <span class="text-gray-400 mx-1">→</span>
+                      <span v-if="fare.is_bidirectional" class="text-orange-500 mx-1">↔</span>
+                      <span v-else class="text-gray-400 mx-1">→</span>
                       <span class="font-medium">{{ fare.to_stop?.name }}</span>
                     </div>
                     <div class="flex items-center gap-3">
-                      <span class="font-bold text-green-700">{{ fare.amount }} FCFA</span>
+                      <span class="font-bold text-green-700">{{ fare.amount?.toLocaleString() }} FCFA</span>
                       <button @click="removeFare(fare.id)" class="text-red-400 hover:text-red-600">
                         <Trash2 class="h-4 w-4" />
                       </button>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Trips/Voyages Section -->
+            <div class="bg-white rounded-lg border border-orange-200 shadow-sm overflow-hidden">
+              <div @click="showTrips = !showTrips" class="p-3 bg-gray-50 flex items-center justify-between cursor-pointer hover:bg-gray-100">
+                <div class="flex items-center gap-2">
+                  <Bus class="h-5 w-5 text-blue-600" />
+                  <h3 class="font-semibold text-gray-700">
+                    Voyages ({{ selectedRoute.trips_count || (selectedRoute.trips || []).length }})
+                  </h3>
+                </div>
+                <component :is="showTrips ? ChevronDown : ChevronRight" class="h-5 w-5 text-gray-400" />
+              </div>
+              
+              <div v-if="showTrips" class="p-4 border-t border-orange-100">
+                <div class="space-y-2">
+                  <div v-if="!selectedRoute.trips || selectedRoute.trips.length === 0" class="text-sm text-gray-500 text-center py-2">
+                    Aucun voyage programmé sur cette route.
+                  </div>
+                  <div v-for="trip in selectedRoute.trips" :key="trip.id" 
+                    class="flex items-center justify-between p-2 bg-gray-50 rounded-md border border-gray-100">
+                    <div class="flex items-center gap-3">
+                      <Bus class="h-5 w-5 text-blue-500" />
+                      <div>
+                        <p class="text-sm font-medium text-gray-800">{{ trip.vehicle?.identifier || 'Véhicule' }}</p>
+                        <p class="text-xs text-gray-500">
+                          {{ new Date(trip.departure_at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }}
+                        </p>
+                      </div>
+                    </div>
+                    <span :class="[
+                      'px-2 py-0.5 rounded-full text-[10px] font-medium',
+                      trip.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
+                      trip.status === 'departed' ? 'bg-purple-100 text-purple-800' :
+                      trip.status === 'arrived' ? 'bg-green-100 text-green-800' :
+                      trip.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                      'bg-gray-100 text-gray-800'
+                    ]">
+                      {{ trip.status === 'scheduled' ? 'Programmé' :
+                         trip.status === 'departed' ? 'Effectué' :
+                         trip.status === 'arrived' ? 'Arrivé' :
+                         trip.status === 'cancelled' ? 'Annulé' :
+                         trip.status }}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -515,10 +665,10 @@ watch(() => props.routes, (newRoutes) => {
 
     <!-- Stop Modal -->
     <DialogModal :show="showStopModal" @close="closeStopModal">
-      <template #title>Ajouter un Arrêt</template>
+      <template #title>Ajouter une Destination</template>
       <template #content>
         <div>
-          <InputLabel for="stop" value="Sélectionner un arrêt" />
+          <InputLabel for="stop" value="Sélectionner une destination" />
           <select v-model="stopForm.stop_id" class="w-full border-gray-300 rounded-md shadow-sm focus:border-green-500 focus:ring-green-500 mt-1">
             <option value="">Choisir...</option>
             <option v-for="stop in stops" :key="stop.id" :value="stop.id">
@@ -539,27 +689,26 @@ watch(() => props.routes, (newRoutes) => {
       <template #title>Ajouter un Tarif</template>
       <template #content>
         <div class="space-y-4">
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <InputLabel for="from" value="De" />
-              <select v-model="fareForm.from_stop_id" class="w-full border-gray-300 rounded-md shadow-sm focus:border-green-500 focus:ring-green-500">
-                <option value="">Choisir...</option>
-                <option v-for="stop in stops" :key="stop.id" :value="stop.id">{{ stop.name }}</option>
-              </select>
-              <InputError :message="errors.from_stop_id" />
-            </div>
-            <div>
-              <InputLabel for="to" value="À" />
-              <select v-model="fareForm.to_stop_id" class="w-full border-gray-300 rounded-md shadow-sm focus:border-green-500 focus:ring-green-500">
-                <option value="">Choisir...</option>
-                <option v-for="stop in stops" :key="stop.id" :value="stop.id">{{ stop.name }}</option>
-              </select>
-              <InputError :message="errors.to_stop_id" />
-            </div>
+          <div>
+            <InputLabel for="from" value="Départ (origine de la route)" />
+            <select v-model="fareForm.from_stop_id" class="w-full border-gray-300 rounded-md shadow-sm focus:border-green-500 focus:ring-green-500 bg-gray-100" disabled>
+              <option value="">Choisir...</option>
+              <option v-for="stop in stops" :key="stop.id" :value="stop.id">{{ stop.name }}</option>
+            </select>
+            <p class="mt-1 text-xs text-gray-500">Le départ est automatiquement défini depuis l'origine de la route.</p>
+            <InputError :message="errors.from_stop_id" />
+          </div>
+          <div>
+            <InputLabel for="to" value="Destination" />
+            <select v-model="fareForm.to_stop_id" class="w-full border-gray-300 rounded-md shadow-sm focus:border-green-500 focus:ring-green-500">
+              <option value="">Choisir une destination...</option>
+              <option v-for="stop in stops" :key="stop.id" :value="stop.id">{{ stop.name }}</option>
+            </select>
+            <InputError :message="errors.to_stop_id" />
           </div>
           <div>
             <InputLabel for="amount" value="Montant (FCFA)" />
-            <TextInput v-model="fareForm.amount" type="number" class="w-full" />
+            <TextInput v-model="fareForm.amount" type="number" class="w-full" placeholder="Ex: 5000" />
             <InputError :message="errors.amount" />
           </div>
         </div>

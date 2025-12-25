@@ -48,12 +48,7 @@ class Route extends Model
 
     public function routeStopOrders()
     {
-        return $this->hasMany(RouteStopOrder::class);
-    }
-
-    public function routeFares()
-    {
-        return $this->hasMany(RouteFare::class);
+        return $this->hasMany(RouteStopOrder::class)->orderBy('stop_index');
     }
 
     public function stops()

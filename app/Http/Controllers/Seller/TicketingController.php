@@ -5,7 +5,8 @@ namespace App\Http\Controllers\Seller;
 use App\Http\Controllers\Controller;
 use App\Models\Trip;
 use App\Models\RouteFare;
-use App\Models\UserRouteAssignment;
+use App\Models\UserStationAssignment;
+use App\Models\Route;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -36,23 +37,20 @@ class TicketingController extends Controller
                 ->orderBy('departure_at')
                 ->get();
 
-            $routeFares = RouteFare::with(['fromStop', 'toStop'])
+            $routeFares = RouteFare::with(['fromStop.station', 'toStop.station'])
                 ->get();
         } else {
-            // Les vendeurs ne voient que ce qui leur est assigné OU ce qui part de leur station
-            $assignedRouteIds = UserRouteAssignment::where('user_id', $user->id)
+            // Les vendeurs ne voient que les voyages dont les routes partent de leurs stations assignées
+            $assignedStationIds = UserStationAssignment::where('user_id', $user->id)
                 ->where('active', true)
-                ->pluck('route_id')
+                ->pluck('station_id')
                 ->toArray();
 
-            // Si le vendeur est rattaché à une gare, ajouter les routes qui partent de cette gare
-            if ($user->station_id) {
-                $stationRouteIds = \App\Models\Route::where('origin_station_id', $user->station_id)
-                    ->where('active', true)
-                    ->pluck('id')
-                    ->toArray();
-                $assignedRouteIds = array_unique(array_merge($assignedRouteIds, $stationRouteIds));
-            }
+            // Récupérer les routes qui partent des stations assignées
+            $assignedRouteIds = Route::whereIn('origin_station_id', $assignedStationIds)
+                ->where('active', true)
+                ->pluck('id')
+                ->toArray();
 
             $trips = Trip::with(['route.originStation', 'vehicle.vehicleType'])
                 ->withCount('tripSeatOccupancies as occupied_seats')
@@ -61,35 +59,12 @@ class TicketingController extends Controller
                 ->orderBy('departure_at')
                 ->get();
 
-            // Filter fares to only show those starting from the seller's station
-            $routeFaresQuery = RouteFare::with(['fromStop', 'toStop', 'route'])
-                ->whereIn('route_id', $assignedRouteIds);
-            
-            // If seller has a station, only show fares that start from their station
-            if ($user->station_id) {
-                $routeFaresQuery->whereHas('fromStop', function($query) use ($user) {
-                    $query->where('station_id', $user->station_id);
-                });
-            }
-            
-            $routeFares = $routeFaresQuery->get();
-        }
-
-        // Enrichir les tronçons avec la couleur de destination
-        // Pour cela, on a besoin de l'ordre des arrêts pour chaque route
-        $routeIds = $routeFares->pluck('route_id')->unique();
-        $routeStopOrders = \App\Models\RouteStopOrder::whereIn('route_id', $routeIds)->get()->groupBy('route_id');
-
-        foreach ($routeFares as $fare) {
-            $orders = $routeStopOrders[$fare->route_id] ?? collect();
-            $totalStops = $orders->count();
-            $stopOrder = $orders->where('stop_id', $fare->to_stop_id)->first();
-            
-            if ($stopOrder && $totalStops > 0) {
-                $fare->color = $this->getStopColor($stopOrder->stop_index, $totalStops);
-            } else {
-                $fare->color = '#EF4444'; // Fallback
-            }
+            // Get fares where the from_stop is in one of the assigned stations
+            $routeFares = RouteFare::with(['fromStop.station', 'toStop.station'])
+                ->whereHas('fromStop', function($query) use ($assignedStationIds) {
+                    $query->whereIn('station_id', $assignedStationIds);
+                })
+                ->get();
         }
 
         // Récupérer toutes les routes et véhicules pour la création
@@ -162,7 +137,7 @@ class TicketingController extends Controller
     }
     
     /**
-     * Génère une couleur rose dégradée en fonction de la distance (index)
+     * Génère une couleur en fonction de la distance (index)
      * Plus c'est loin, plus c'est foncé/intense
      */
     private function getStopColor($stopIndex, $totalStops)

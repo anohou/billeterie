@@ -10,7 +10,7 @@
         <template v-if="showNav">
           <Link :href="route('dashboard')" class="pl-4 flex items-center gap-2">
           <div class="flex items-center">
-            <Earth class="text-green-700" :size="32" />
+            <Receipt class="text-green-700" :size="32" />
             <div class="ml-2">
               <span class="font-bold text-2xl text-green-700">i - </span>
               <span class="font-bold text-2xl text-orange-500 ml-0">Ticket</span>
@@ -25,7 +25,7 @@
         <template v-else>
            <!-- Compact mode: logo + hamburger menu -->
            <Link :href="route('dashboard')" class="flex items-center gap-1.5 ml-2">
-             <Earth class="text-green-700" :size="24" />
+             <Receipt class="text-green-700" :size="24" />
              <span class="font-bold text-lg text-green-700">i-</span>
              <span class="font-bold text-lg text-orange-500">Ticket</span>
            </Link>
@@ -149,7 +149,7 @@
 import { ref, computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 
-import Earth from 'vue-material-design-icons/Earth.vue';
+import Receipt from 'vue-material-design-icons/Receipt.vue';
 import HomeOutline from 'vue-material-design-icons/HomeOutline.vue';
 import Settings from 'vue-material-design-icons/Cog.vue';
 import Ticket from 'vue-material-design-icons/Ticket.vue';

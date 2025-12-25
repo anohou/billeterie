@@ -19,7 +19,7 @@ const page = usePage();
 const menuItems = computed(() => [
   {
     route: 'admin.stations.index',
-    label: 'Stations',
+    label: 'Gares',
     icon: MapMarker
   },
   {

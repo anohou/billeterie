@@ -56,9 +56,17 @@ class TripController extends Controller
         ]);
     }
     
-    public function seatMap(Trip $trip)
+    public function seatMap(Trip $trip, Request $request)
     {
-        $trip->load(['vehicle.vehicleType', 'tripSeatOccupancies.ticket.toStop', 'route.stops']);
+        $validated = $request->validate([
+            'from_stop_id' => 'nullable|uuid',
+            'to_stop_id' => 'nullable|uuid',
+        ]);
+        
+        $reqFromId = $validated['from_stop_id'] ?? null;
+        $reqToId = $validated['to_stop_id'] ?? null;
+
+        $trip->load(['vehicle.vehicleType', 'tripSeatOccupancies.ticket.toStop', 'tripSeatOccupancies.ticket.fromStop', 'route.stops']);
 
         $vehicleType = $trip->vehicle->vehicleType;
         $seatCount = $vehicleType->seat_count;
@@ -68,16 +76,42 @@ class TripController extends Controller
         
         $stopsOnRoute = $trip->route->stops->pluck('id')->toArray();
         $totalStops = count($stopsOnRoute);
+        
+        // Determine requested segment indices
+        $reqStartIndex = 0;
+        $reqEndIndex = $totalStops - 1; // Default to full route
+        
+        if ($reqFromId) {
+             $idx = array_search($reqFromId, $stopsOnRoute);
+             if ($idx !== false) $reqStartIndex = $idx;
+        }
+        if ($reqToId) {
+             $idx = array_search($reqToId, $stopsOnRoute);
+             if ($idx !== false) $reqEndIndex = $idx;
+        }
 
-        $occupiedSeatsLookup = $trip->tripSeatOccupancies->keyBy('seat_number')->map(function ($occupancy) use ($stopsOnRoute, $totalStops) {
+        $occupiedSeatsLookup = $trip->tripSeatOccupancies->keyBy('seat_number')->filter(function ($occupancy) use ($stopsOnRoute, $reqStartIndex, $reqEndIndex) {
             if (!$occupancy->ticket) {
-                return null;
+                return false; // Should not happen for occupancy record, but safe to ignore if no ticket linked
             }
-            $stopIndex = array_search($occupancy->ticket->to_stop_id, $stopsOnRoute);
-            $stopOrder = $stopIndex !== false ? $stopIndex + 1 : $totalStops;
+            
+            // Get Ticket Segment Indices
+            $ticketFromIdx = array_search($occupancy->ticket->from_stop_id, $stopsOnRoute);
+            $ticketToIdx = array_search($occupancy->ticket->to_stop_id, $stopsOnRoute);
+            
+            // Safety fallback: if stops not found in current route (e.g. route changed), assume occupied
+            if ($ticketFromIdx === false || $ticketToIdx === false) return true;
+            
+            // Check Overlap: [TicketStart, TicketEnd) vs [ReqStart, ReqEnd)
+            // Overlap condition: Start1 < End2 && Start2 < End1
+            return ($ticketFromIdx < $reqEndIndex) && ($reqStartIndex < $ticketToIdx);
+            
+        })->map(function ($occupancy) use ($stopsOnRoute, $totalStops) {
+            $ticketToIdx = array_search($occupancy->ticket->to_stop_id, $stopsOnRoute);
+            $stopOrder = $ticketToIdx !== false ? $ticketToIdx + 1 : $totalStops;
             
             return [
-                'destination_name' => $occupancy->ticket->toStop->name,
+                'destination_name' => $occupancy->ticket->toStop->name ?? 'Inconnu',
                 'color' => $this->getStopColor($stopOrder, $totalStops)
             ];
         });

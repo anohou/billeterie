@@ -18,9 +18,15 @@ class AuthenticatedSessionController extends Controller
      */
     public function create(): Response
     {
+        $users = \App\Models\User::where('active', true)
+            ->select(['id', 'name', 'email', 'role'])
+            ->orderBy('name')
+            ->get();
+
         return Inertia::render('Auth/Login', [
             'canResetPassword' => Route::has('password.request'),
             'status' => session('status'),
+            'users' => $users,
         ]);
     }
 

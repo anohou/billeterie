@@ -48,9 +48,9 @@ import Cash from 'vue-material-design-icons/Cash.vue';
 const selectedRoute = ref('');
 
 const settingsMenu = [
-    { name: 'Stations', route: 'admin.stations.index', icon: MapMarker },
+    { name: 'Gares', route: 'admin.stations.index', icon: MapMarker },
     { name: 'Routes', route: 'admin.routes.index', icon: Router },
-    { name: 'Arrêts', route: 'admin.stops.index', icon: MapMarkerRadius },
+    { name: 'Destinations', route: 'admin.stops.index', icon: MapMarkerRadius },
     { name: 'Véhicules', route: 'admin.vehicles.index', icon: Bus },
     { name: 'Types de Véhicules', route: 'admin.vehicle-types.index', icon: Car },
     { name: 'Voyages', route: 'admin.trips.index', icon: Calendar },

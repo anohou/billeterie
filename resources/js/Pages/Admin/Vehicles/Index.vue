@@ -15,6 +15,9 @@ import Trash2 from 'vue-material-design-icons/Delete.vue';
 import Pencil from 'vue-material-design-icons/Pencil.vue';
 import Plus from 'vue-material-design-icons/Plus.vue';
 import MapMarkerRadius from 'vue-material-design-icons/MapMarkerRadius.vue';
+import Bus from 'vue-material-design-icons/Bus.vue';
+import ChevronDown from 'vue-material-design-icons/ChevronDown.vue';
+import ChevronRight from 'vue-material-design-icons/ChevronRight.vue';
 
 const props = defineProps({
   vehicles: {
@@ -34,6 +37,7 @@ const processing = ref(false);
 const errors = ref({});
 const showModal = ref(false);
 const isEditing = ref(false);
+const showTrips = ref(false);
 
 const form = ref({
   identifier: '',
@@ -73,6 +77,7 @@ const isSelected = (vehicle) => {
 
 const selectVehicle = (vehicle) => {
   selectedVehicle.value = vehicle;
+  showTrips.value = false;
 };
 
 const openCreateModal = () => {
@@ -207,6 +212,9 @@ const deleteVehicle = (id) => {
                     ]">
                       {{ vehicle.active ? 'Active' : 'Inactive' }}
                     </span>
+                    <span class="text-xs text-gray-400 ml-1">
+                      {{ vehicle.trips_count || 0 }} voyages
+                    </span>
                   </div>
                 </div>
               </div>
@@ -260,6 +268,53 @@ const deleteVehicle = (id) => {
                   <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">CAPACITÉ</span>
                   <div class="text-xl font-bold text-gray-900 leading-tight">
                     {{ selectedVehicle.seat_count }} places
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Trips/Voyages Section -->
+            <div class="bg-white rounded-lg border border-orange-200 shadow-sm overflow-hidden">
+              <div @click="showTrips = !showTrips" class="p-3 bg-gray-50 flex items-center justify-between cursor-pointer hover:bg-gray-100">
+                <div class="flex items-center gap-2">
+                  <Bus class="h-5 w-5 text-blue-600" />
+                  <h3 class="font-semibold text-gray-700">
+                    Voyages ({{ selectedVehicle.trips_count || (selectedVehicle.trips || []).length }})
+                  </h3>
+                </div>
+                <component :is="showTrips ? ChevronDown : ChevronRight" class="h-5 w-5 text-gray-400" />
+              </div>
+              
+              <div v-if="showTrips" class="p-4 border-t border-orange-100">
+                <div class="space-y-2">
+                  <div v-if="!selectedVehicle.trips || selectedVehicle.trips.length === 0" class="text-sm text-gray-500 text-center py-2">
+                    Aucun voyage avec ce véhicule.
+                  </div>
+                  <div v-for="trip in selectedVehicle.trips" :key="trip.id" 
+                    class="flex items-center justify-between p-2 bg-gray-50 rounded-md border border-gray-100">
+                    <div class="flex items-center gap-3">
+                      <Bus class="h-5 w-5 text-blue-500" />
+                      <div>
+                        <p class="text-sm font-medium text-gray-800">{{ trip.route?.name || 'Route' }}</p>
+                        <p class="text-xs text-gray-500">
+                          {{ new Date(trip.departure_at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }}
+                        </p>
+                      </div>
+                    </div>
+                    <span :class="[
+                      'px-2 py-0.5 rounded-full text-[10px] font-medium',
+                      trip.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
+                      trip.status === 'departed' ? 'bg-purple-100 text-purple-800' :
+                      trip.status === 'arrived' ? 'bg-green-100 text-green-800' :
+                      trip.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                      'bg-gray-100 text-gray-800'
+                    ]">
+                      {{ trip.status === 'scheduled' ? 'Programmé' :
+                         trip.status === 'departed' ? 'Effectué' :
+                         trip.status === 'arrived' ? 'Arrivé' :
+                         trip.status === 'cancelled' ? 'Annulé' :
+                         trip.status }}
+                    </span>
                   </div>
                 </div>
               </div>

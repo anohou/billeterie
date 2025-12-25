@@ -21,10 +21,6 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
-  routes: {
-    type: Array,
-    default: () => []
-  },
   stops: {
     type: Array,
     default: () => []
@@ -40,10 +36,10 @@ const showModal = ref(false);
 const isEditing = ref(false);
 
 const form = ref({
-  route_id: '',
   from_stop_id: '',
   to_stop_id: '',
-  amount: ''
+  amount: '',
+  is_bidirectional: true
 });
 
 // Computed
@@ -52,10 +48,23 @@ const filteredFares = computed(() => {
 
   const searchTerm = search.value.toLowerCase();
   return props.fares.filter(fare =>
-    fare.route?.name.toLowerCase().includes(searchTerm) ||
     fare.from_stop?.name.toLowerCase().includes(searchTerm) ||
-    fare.to_stop?.name.toLowerCase().includes(searchTerm)
+    fare.to_stop?.name.toLowerCase().includes(searchTerm) ||
+    fare.from_stop?.station?.name?.toLowerCase().includes(searchTerm) ||
+    fare.to_stop?.station?.name?.toLowerCase().includes(searchTerm)
   );
+});
+
+// Filter out selected departure from arrival options
+const availableToStops = computed(() => {
+  if (!form.value.from_stop_id) return props.stops;
+  return props.stops.filter(stop => stop.id !== form.value.from_stop_id);
+});
+
+// Filter out selected arrival from departure options
+const availableFromStops = computed(() => {
+  if (!form.value.to_stop_id) return props.stops;
+  return props.stops.filter(stop => stop.id !== form.value.to_stop_id);
 });
 
 // Watchers
@@ -81,10 +90,10 @@ const selectFare = (fare) => {
 const openCreateModal = () => {
   isEditing.value = false;
   form.value = {
-    route_id: '',
     from_stop_id: '',
     to_stop_id: '',
-    amount: ''
+    amount: '',
+    is_bidirectional: true
   };
   errors.value = {};
   showModal.value = true;
@@ -94,10 +103,10 @@ const openEditModal = () => {
   if (!selectedFare.value) return;
   isEditing.value = true;
   form.value = {
-    route_id: selectedFare.value.route_id,
     from_stop_id: selectedFare.value.from_stop_id,
     to_stop_id: selectedFare.value.to_stop_id,
-    amount: selectedFare.value.amount
+    amount: selectedFare.value.amount,
+    is_bidirectional: selectedFare.value.is_bidirectional ?? true
   };
   errors.value = {};
   showModal.value = true;
@@ -106,10 +115,10 @@ const openEditModal = () => {
 const closeModal = () => {
   showModal.value = false;
   form.value = {
-    route_id: '',
     from_stop_id: '',
     to_stop_id: '',
-    amount: ''
+    amount: '',
+    is_bidirectional: true
   };
   errors.value = {};
 };
@@ -156,6 +165,13 @@ const deleteFare = (id) => {
       }
     });
   }
+};
+
+const getStopLabel = (stop) => {
+  if (stop.station_name) {
+    return `${stop.name} (${stop.station_name})`;
+  }
+  return stop.name;
 };
 </script>
 
@@ -206,12 +222,22 @@ const deleteFare = (id) => {
                     borderLeft: isSelected(fare) ? '4px solid #16a34a' : '4px solid #fed7aa'
                   }"
                 >
-                  <div class="flex justify-between items-start">
-                    <div>
-                      <h3 :class="['font-semibold', isSelected(fare) ? 'text-green-800' : 'text-gray-800']">{{ fare.route?.name }}</h3>
-                      <p class="text-xs text-gray-500 mt-1">{{ fare.from_stop?.name }} → {{ fare.to_stop?.name }}</p>
+                  <div class="flex justify-between items-center">
+                    <div class="flex-1 min-w-0">
+                      <h3 :class="['font-semibold truncate', isSelected(fare) ? 'text-green-800' : 'text-gray-800']">
+                        {{ fare.from_stop?.name }} 
+                        <span v-if="fare.is_bidirectional" class="text-orange-500">↔</span>
+                        <span v-else>→</span>
+                        {{ fare.to_stop?.name }}
+                      </h3>
+                      <p class="text-xs text-gray-500 mt-0.5">
+                        {{ fare.from_stop?.station?.name || '' }} → {{ fare.to_stop?.station?.name || '' }}
+                      </p>
                     </div>
-                    <span class="font-bold text-green-700">{{ fare.amount }} FCFA</span>
+                    <div class="ml-3 text-right shrink-0">
+                      <span class="text-lg font-bold text-green-700">{{ fare.amount?.toLocaleString() }}</span>
+                      <span class="text-xs text-gray-500 ml-0.5">FCFA</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -249,28 +275,39 @@ const deleteFare = (id) => {
 
               <!-- Details Row -->
               <div class="grid grid-cols-12 gap-6 mb-6">
-                <div class="col-span-12">
-                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">ROUTE</span>
-                  <div class="text-xl font-bold text-gray-900 leading-tight">
-                    {{ selectedFare.route?.name }}
-                  </div>
-                </div>
                 <div class="col-span-6">
                   <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">DÉPART</span>
-                  <div class="text-lg font-medium text-gray-900 leading-tight">
+                  <div class="text-xl font-bold text-gray-900 leading-tight">
                     {{ selectedFare.from_stop?.name }}
+                  </div>
+                  <div class="text-sm text-gray-500 mt-1">
+                    {{ selectedFare.from_stop?.station?.name }}
                   </div>
                 </div>
                 <div class="col-span-6">
                   <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">ARRIVÉE</span>
-                  <div class="text-lg font-medium text-gray-900 leading-tight">
+                  <div class="text-xl font-bold text-gray-900 leading-tight">
                     {{ selectedFare.to_stop?.name }}
+                  </div>
+                  <div class="text-sm text-gray-500 mt-1">
+                    {{ selectedFare.to_stop?.station?.name }}
                   </div>
                 </div>
                 <div class="col-span-12">
                   <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">MONTANT</span>
                   <div class="text-3xl font-bold text-green-700">
-                    {{ selectedFare.amount.toLocaleString() }} FCFA
+                    {{ selectedFare.amount?.toLocaleString() }} FCFA
+                  </div>
+                </div>
+                <div class="col-span-12">
+                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">DIRECTION</span>
+                  <div>
+                    <span v-if="selectedFare.is_bidirectional" class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-orange-100 text-orange-800">
+                      ↔ Bidirectionnel (aller-retour)
+                    </span>
+                    <span v-else class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                      → Sens unique
+                    </span>
                   </div>
                 </div>
               </div>
@@ -287,28 +324,15 @@ const deleteFare = (id) => {
       </template>
       <template #content>
         <div class="space-y-4">
-          <div>
-            <InputLabel for="route_id" value="Route" />
-            <select v-model="form.route_id" id="route_id"
-              class="w-full border-gray-300 rounded-md shadow-sm focus:border-green-500 focus:ring-green-500"
-              :class="{ 'border-red-500': errors.route_id }">
-              <option value="">Sélectionner une route</option>
-              <option v-for="route in routes" :key="route.id" :value="route.id">
-                {{ route.name }}
-              </option>
-            </select>
-            <InputError :message="errors.route_id" />
-          </div>
-
           <div class="grid grid-cols-2 gap-4">
             <div>
               <InputLabel for="from_stop_id" value="Départ" />
               <select v-model="form.from_stop_id" id="from_stop_id"
                 class="w-full border-gray-300 rounded-md shadow-sm focus:border-green-500 focus:ring-green-500"
                 :class="{ 'border-red-500': errors.from_stop_id }">
-                <option value="">Sélectionner un arrêt</option>
-                <option v-for="stop in stops" :key="stop.id" :value="stop.id">
-                  {{ stop.name }}
+                <option value="">Sélectionner une destination</option>
+                <option v-for="stop in availableFromStops" :key="stop.id" :value="stop.id">
+                  {{ getStopLabel(stop) }}
                 </option>
               </select>
               <InputError :message="errors.from_stop_id" />
@@ -319,9 +343,9 @@ const deleteFare = (id) => {
               <select v-model="form.to_stop_id" id="to_stop_id"
                 class="w-full border-gray-300 rounded-md shadow-sm focus:border-green-500 focus:ring-green-500"
                 :class="{ 'border-red-500': errors.to_stop_id }">
-                <option value="">Sélectionner un arrêt</option>
-                <option v-for="stop in stops" :key="stop.id" :value="stop.id">
-                  {{ stop.name }}
+                <option value="">Sélectionner une destination</option>
+                <option v-for="stop in availableToStops" :key="stop.id" :value="stop.id">
+                  {{ getStopLabel(stop) }}
                 </option>
               </select>
               <InputError :message="errors.to_stop_id" />
@@ -330,9 +354,20 @@ const deleteFare = (id) => {
 
           <div>
             <InputLabel for="amount" value="Montant (FCFA)" />
-            <TextInput v-model="form.amount" id="amount" type="number" placeholder="Ex: 5000"
+            <TextInput v-model="form.amount" id="amount" type="number" placeholder="Ex: 5000" class="w-full"
               :class="{ 'border-red-500': errors.amount }" />
             <InputError :message="errors.amount" />
+          </div>
+
+          <div class="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
+            <div>
+              <span class="font-medium text-gray-800">Tarif bidirectionnel</span>
+              <p class="text-xs text-gray-500 mt-0.5">Le même tarif s'applique dans les deux sens</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" v-model="form.is_bidirectional" class="sr-only peer" />
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+            </label>
           </div>
         </div>
       </template>

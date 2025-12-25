@@ -1,6 +1,6 @@
 <script setup>
 import { Link } from '@inertiajs/vue3';
-import Earth from 'vue-material-design-icons/Receipt.vue';
+import Receipt from 'vue-material-design-icons/Receipt.vue';
 
 localStorage.getItem('locale') ? localStorage.getItem('locale') : localStorage.setItem('locale', 'fr');
 </script>
@@ -11,10 +11,10 @@ localStorage.getItem('locale') ? localStorage.getItem('locale') : localStorage.s
             <Link href="/" class="flex items-center gap-2">
                 <!-- Logo -->
                 <div class="flex items-center">
-                    <Earth class="text-green-700" :size="40"/>
+                    <Receipt class="text-green-700" :size="40"/>
                     <div class="ml-2">
-                        <span class="font-bold text-2xl text-green-700">SYGECO</span>
-                        <span class="font-bold text-2xl text-orange-500">Taxes</span>
+                        <span class="font-bold text-2xl text-green-700">i - </span>
+                        <span class="font-bold text-2xl text-orange-500">Ticket</span>
                     </div>
                 </div>
             </Link>

@@ -15,21 +15,49 @@ import Trash2 from 'vue-material-design-icons/Delete.vue';
 import Pencil from 'vue-material-design-icons/Pencil.vue';
 import Plus from 'vue-material-design-icons/Plus.vue';
 import Account from 'vue-material-design-icons/Account.vue';
+import MapMarker from 'vue-material-design-icons/MapMarker.vue';
+import ContentCopy from 'vue-material-design-icons/ContentCopy.vue';
+import Refresh from 'vue-material-design-icons/Refresh.vue';
+import Check from 'vue-material-design-icons/Check.vue';
+import Eye from 'vue-material-design-icons/Eye.vue';
+import EyeOff from 'vue-material-design-icons/EyeOff.vue';
 
 const props = defineProps({
   users: {
     type: Object,
     default: () => ({ data: [] })
+  },
+  stations: {
+    type: Array,
+    default: () => []
   }
 });
 
 // State
 const search = ref('');
+const roleFilter = ref('');
 const selectedUser = ref(null);
 const processing = ref(false);
 const errors = ref({});
 const showModal = ref(false);
 const isEditing = ref(false);
+const activeTab = ref('assignments');
+const passwordCopied = ref(false);
+const showPassword = ref(false);
+
+// Assignment modal state
+const showAssignmentModal = ref(false);
+const isEditingAssignment = ref(false);
+const editingAssignment = ref(null);
+const assignmentForm = ref({
+  station_id: ''
+});
+
+// Reset Password state
+const showResetPasswordModal = ref(false);
+const newPassword = ref('');
+const newPasswordCopied = ref(false);
+const passwordSaved = ref(false);
 
 const form = ref({
   name: '',
@@ -42,16 +70,33 @@ const form = ref({
 
 // Computed
 const filteredUsers = computed(() => {
-  const users = props.users?.data || [];
-  if (!search.value) return users;
+  let users = props.users?.data || [];
+  
+  // Filter by role
+  if (roleFilter.value) {
+    users = users.filter(user => user.role === roleFilter.value);
+  }
+  
+  // Filter by search term
+  if (search.value) {
+    const searchTerm = search.value.toLowerCase();
+    users = users.filter(user =>
+      user.name.toLowerCase().includes(searchTerm) ||
+      user.email.toLowerCase().includes(searchTerm) ||
+      user.telephone?.toLowerCase().includes(searchTerm)
+    );
+  }
+  
+  return users;
+});
 
-  const searchTerm = search.value.toLowerCase();
-  return users.filter(user =>
-    user.name.toLowerCase().includes(searchTerm) ||
-    user.email.toLowerCase().includes(searchTerm) ||
-    user.telephone?.toLowerCase().includes(searchTerm) ||
-    user.role.toLowerCase().includes(searchTerm)
+// Get stations not already assigned to the user
+const availableStations = computed(() => {
+  if (!selectedUser.value) return props.stations;
+  const assignedIds = new Set(
+    (selectedUser.value.station_assignments || []).map(a => a.station_id)
   );
+  return props.stations.filter(s => !assignedIds.has(s.id));
 });
 
 // Watchers
@@ -72,19 +117,52 @@ const isSelected = (user) => {
 
 const selectUser = (user) => {
   selectedUser.value = user;
+  activeTab.value = 'assignments';
+};
+
+// Generate a random password
+// Generate a random password (alphanumeric only)
+const generatePassword = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let password = '';
+  
+  // 10 alphanumeric chars
+  for (let i = 0; i < 10; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  
+  return password;
+};
+
+// Copy password to clipboard
+const copyPasswordToClipboard = async () => {
+  if (!form.value.password) return;
+  
+  try {
+    await navigator.clipboard.writeText(form.value.password);
+    passwordCopied.value = true;
+    setTimeout(() => {
+      passwordCopied.value = false;
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to copy password:', err);
+  }
 };
 
 const openCreateModal = () => {
   isEditing.value = false;
+  const generatedPassword = generatePassword();
   form.value = {
     name: '',
     email: '',
     telephone: '',
     role: 'seller',
-    password: '',
-    password_confirmation: ''
+    password: generatedPassword,
+    password_confirmation: generatedPassword
   };
   errors.value = {};
+  passwordCopied.value = false;
+  showPassword.value = false;
   showModal.value = true;
 };
 
@@ -150,6 +228,157 @@ const deleteUser = (id) => {
   }
 };
 
+// Assignment methods
+const openAssignmentModal = () => {
+  isEditingAssignment.value = false;
+  editingAssignment.value = null;
+  assignmentForm.value = { station_id: '' };
+  errors.value = {};
+  showAssignmentModal.value = true;
+};
+
+const openEditAssignmentModal = (assignment) => {
+  isEditingAssignment.value = true;
+  editingAssignment.value = assignment;
+  assignmentForm.value = { station_id: assignment.station_id };
+  errors.value = {};
+  showAssignmentModal.value = true;
+};
+
+const closeAssignmentModal = () => {
+  showAssignmentModal.value = false;
+  isEditingAssignment.value = false;
+  editingAssignment.value = null;
+  assignmentForm.value = { station_id: '' };
+  errors.value = {};
+};
+
+const addAssignment = () => {
+  if (!selectedUser.value || !assignmentForm.value.station_id) return;
+  processing.value = true;
+  
+  if (isEditingAssignment.value && editingAssignment.value) {
+    // Update existing assignment
+    router.put(route('admin.assignments.update', editingAssignment.value.id), {
+      station_id: assignmentForm.value.station_id,
+      active: editingAssignment.value.active
+    }, {
+      preserveScroll: true,
+      onSuccess: () => {
+        processing.value = false;
+        closeAssignmentModal();
+      },
+      onError: (err) => {
+        processing.value = false;
+        errors.value = err;
+      }
+    });
+  } else {
+    // Create new assignment
+    form.value.post(route('admin.users.stations.store', selectedUser.value.id), {
+      station_id: assignmentForm.value.station_id
+    }, {
+      preserveScroll: true,
+      onSuccess: () => {
+        closeAssignmentModal();
+        // Optimistic update handled by watcher or re-fetch
+      },
+      onError: (err) => {
+        console.error(err);
+      }
+    });
+  }
+};
+
+const openResetPasswordModal = () => {
+  newPassword.value = generatePassword();
+  newPasswordCopied.value = false;
+  passwordSaved.value = false;
+  showResetPasswordModal.value = true;
+};
+
+const copyNewPassword = async () => {
+  try {
+    await navigator.clipboard.writeText(newPassword.value);
+    newPasswordCopied.value = true;
+    setTimeout(() => {
+      newPasswordCopied.value = false;
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to copy password:', err);
+  }
+};
+
+const saveNewPassword = () => {
+  processing.value = true;
+  router.put(route('admin.users.update', selectedUser.value.id), {
+    name: selectedUser.value.name,
+    email: selectedUser.value.email,
+    telephone: selectedUser.value.telephone,
+    role: selectedUser.value.role,
+    password: newPassword.value,
+    password_confirmation: newPassword.value
+  }, {
+    preserveScroll: true,
+    onSuccess: () => {
+      passwordSaved.value = true;
+      processing.value = false;
+    },
+    onError: () => {
+      processing.value = false;
+    }
+  });
+};
+
+const removeAssignment = (assignmentId) => {
+  if (!confirm('Retirer cette affectation ?')) return;
+  router.delete(route('admin.assignments.destroy', assignmentId), {
+    preserveScroll: true
+  });
+};
+
+const toggleAssignmentActive = (assignment) => {
+  router.put(route('admin.assignments.update', assignment.id), {
+    station_id: assignment.station_id,
+    active: !assignment.active
+  }, {
+    preserveScroll: true
+  });
+};
+
+const toggleUserActive = (user, event) => {
+  let targetUser = user;
+  let targetEvent = event;
+
+  // Handle case where first arg is Event (implicit call)
+  if (user && user.target && !user.id) {
+    targetEvent = user;
+    targetUser = selectedUser.value;
+  } else if (!user) {
+    targetUser = selectedUser.value;
+  }
+
+  if (!targetUser) return;
+
+  const action = targetUser.active !== false ? 'désactiver' : 'activer';
+  
+  if (!confirm(`Êtes-vous sûr de vouloir ${action} cet utilisateur ?`)) {
+    if (targetEvent && targetEvent.target) {
+      targetEvent.target.checked = !targetEvent.target.checked;
+    }
+    return;
+  }
+
+  router.put(route('admin.users.toggle-active', targetUser.id), {}, {
+    preserveScroll: true,
+    onError: () => {
+      if (targetEvent && targetEvent.target) {
+        targetEvent.target.checked = !targetEvent.target.checked;
+      }
+    }
+  });
+};
+
 const getRoleLabel = (role) => {
   const labels = {
     admin: 'Administrateur',
@@ -190,7 +419,7 @@ const getRoleColor = (role) => {
           <div class="bg-white rounded-lg border border-orange-200 shadow-sm flex flex-col h-full">
             <!-- List Header -->
             <div class="border-b border-orange-200 p-3 bg-gradient-to-r from-green-50 to-orange-50/30">
-              <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center justify-between gap-2 mb-2">
                 <div class="relative flex-1">
                   <input type="text" v-model="search" placeholder="Rechercher..."
                     class="w-full px-4 py-2 pl-10 pr-4 border border-orange-200 rounded-lg focus:outline-none focus:border-orange-400 text-sm" />
@@ -198,6 +427,45 @@ const getRoleColor = (role) => {
                 </div>
                 <button @click="openCreateModal" class="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors" title="Nouvel Utilisateur">
                   <Plus class="h-5 w-5" />
+                </button>
+              </div>
+              <!-- Role Filter -->
+              <div class="flex gap-1">
+                <button 
+                  @click="roleFilter = ''"
+                  :class="[
+                    'px-2 py-1 text-xs rounded-full transition-colors',
+                    roleFilter === '' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ]"
+                >
+                  Tous
+                </button>
+                <button 
+                  @click="roleFilter = 'admin'"
+                  :class="[
+                    'px-2 py-1 text-xs rounded-full transition-colors',
+                    roleFilter === 'admin' ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                  ]"
+                >
+                  Admin
+                </button>
+                <button 
+                  @click="roleFilter = 'supervisor'"
+                  :class="[
+                    'px-2 py-1 text-xs rounded-full transition-colors',
+                    roleFilter === 'supervisor' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                  ]"
+                >
+                  Superviseur
+                </button>
+                <button 
+                  @click="roleFilter = 'seller'"
+                  :class="[
+                    'px-2 py-1 text-xs rounded-full transition-colors',
+                    roleFilter === 'seller' ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ]"
+                >
+                  Vendeur
                 </button>
               </div>
             </div>
@@ -210,24 +478,43 @@ const getRoleColor = (role) => {
               <div v-else>
                 <div v-for="user in filteredUsers" :key="user.id" 
                   @click="selectUser(user)"
-                  class="p-3 cursor-pointer transition-colors"
+                  :class="[
+                    'p-3 cursor-pointer transition-colors',
+                    user.active === false ? 'opacity-60' : ''
+                  ]"
                   :style="{
                     backgroundColor: isSelected(user) ? '#f0fdf4' : '#ffffff',
                     borderLeft: isSelected(user) ? '4px solid #16a34a' : '4px solid #fed7aa'
                   }"
                 >
                   <div class="flex justify-between items-start">
-                    <div>
-                      <h3 :class="['font-semibold', isSelected(user) ? 'text-green-800' : 'text-gray-800']">{{ user.name }}</h3>
-                      <p class="text-xs text-gray-500 mt-1">{{ user.email }}</p>
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2">
+                        <h3 :class="['font-semibold truncate', isSelected(user) ? 'text-green-800' : 'text-gray-800', user.active === false ? 'line-through' : '']">{{ user.name }}</h3>
+                        <span v-if="user.active === false" class="px-1.5 py-0.5 bg-red-100 text-red-600 text-[9px] rounded shrink-0">Inactif</span>
+                      </div>
+                      <p class="text-xs text-gray-500 mt-1 truncate">{{ user.email }}</p>
                     </div>
-                    <span :class="[
-                      'px-2 py-0.5 rounded-full text-[10px] font-medium',
-                      user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 
-                      user.role === 'supervisor' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
-                    ]">
-                      {{ user.role }}
-                    </span>
+                    <div class="flex items-center gap-2 shrink-0 ml-2">
+                      <!-- Role Badge -->
+                      <span :class="[
+                        'px-2 py-0.5 rounded-full text-[10px] font-medium',
+                        user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 
+                        user.role === 'supervisor' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                      ]">
+                        {{ user.role }}
+                      </span>
+                      <!-- Active Toggle in List -->
+                      <label @click.stop class="relative inline-flex items-center cursor-pointer" title="Activer/Désactiver">
+                        <input 
+                          type="checkbox" 
+                          :checked="user.active !== false"
+                          @change="toggleUserActive(user, $event)"
+                          class="sr-only peer" 
+                        />
+                        <div class="w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-600"></div>
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -264,7 +551,7 @@ const getRoleColor = (role) => {
               </div>
 
               <!-- Details Row -->
-              <div class="grid grid-cols-12 gap-6 mb-6">
+              <div class="grid grid-cols-12 gap-6">
                 <div class="col-span-6">
                   <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">EMAIL</span>
                   <div class="text-lg font-medium text-gray-900 break-all">
@@ -288,6 +575,138 @@ const getRoleColor = (role) => {
                     </span>
                   </div>
                 </div>
+                
+                <!-- Active Status -->
+                <div class="col-span-12">
+                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">STATUT</span>
+                  <div class="flex items-center gap-3">
+                    <span :class="[
+                      'inline-flex items-center px-3 py-1 rounded-full text-sm font-medium',
+                      selectedUser.active !== false ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    ]">
+                      {{ selectedUser.active !== false ? 'Actif' : 'Inactif' }}
+                    </span>
+                    <label class="relative inline-flex items-center cursor-pointer" title="Activer/Désactiver">
+                      <input 
+                        type="checkbox" 
+                        :checked="selectedUser.active !== false"
+                        @change="toggleUserActive(null, $event)"
+                        class="sr-only peer" 
+                      />
+                      <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Password Reset -->
+                <div class="col-span-12">
+                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">SÉCURITÉ</span>
+                  <button 
+                    @click="openResetPasswordModal"
+                    class="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium w-full md:w-auto justify-center"
+                  >
+                    <Refresh class="h-4 w-4" />
+                    Générer un nouveau mot de passe
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Related Tables - Tabbed Section -->
+            <div class="bg-white rounded-lg border border-orange-200 shadow-sm overflow-hidden">
+              <!-- Tabs Header -->
+              <div class="flex border-b border-orange-200 bg-gradient-to-r from-green-50 to-orange-50/30">
+                <button 
+                  @click="activeTab = 'assignments'"
+                  :class="[
+                    'flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors',
+                    activeTab === 'assignments' 
+                      ? 'border-green-600 text-green-700 bg-white' 
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ]"
+                >
+                  <MapMarker class="h-4 w-4" />
+                  Affectations ({{ (selectedUser.station_assignments || []).length }})
+                </button>
+              </div>
+
+              <!-- Tab Content -->
+              <div class="p-4">
+                <!-- Assignments Tab -->
+                <div v-if="activeTab === 'assignments'">
+                  <!-- Add Button -->
+                  <div class="flex justify-between items-center mb-4">
+                    <p class="text-sm text-gray-500">Gares où cet utilisateur peut vendre des billets</p>
+                    <button 
+                      @click="openAssignmentModal" 
+                      class="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      <Plus class="h-4 w-4" />
+                      Ajouter
+                    </button>
+                  </div>
+
+                  <!-- Empty State -->
+                  <div v-if="(selectedUser.station_assignments || []).length === 0" class="text-center py-8 text-gray-400">
+                    <MapMarker class="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>Aucune gare affectée</p>
+                  </div>
+
+                  <!-- Assignment List -->
+                  <div v-else class="space-y-2">
+                    <div 
+                      v-for="assignment in selectedUser.station_assignments" 
+                      :key="assignment.id"
+                      :class="[
+                        'flex items-center justify-between p-3 rounded-lg border',
+                        assignment.active !== false ? 'bg-gray-50 border-gray-100' : 'bg-gray-100 border-gray-200 opacity-60'
+                      ]"
+                    >
+                      <div class="flex items-center gap-3">
+                        <div :class="[
+                          'w-8 h-8 flex items-center justify-center rounded-full',
+                          assignment.active !== false ? 'bg-orange-100 text-orange-700' : 'bg-gray-200 text-gray-500'
+                        ]">
+                          <MapMarker class="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p :class="['font-medium', assignment.active !== false ? 'text-gray-800' : 'text-gray-500']">
+                            {{ assignment.station?.name }}
+                          </p>
+                          <p class="text-xs text-gray-500">{{ assignment.station?.city }}</p>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <!-- Edit Button -->
+                        <button 
+                          @click="openEditAssignmentModal(assignment)" 
+                          class="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          title="Modifier"
+                        >
+                          <Pencil class="h-4 w-4" />
+                        </button>
+                        <!-- Active Toggle -->
+                        <label class="relative inline-flex items-center cursor-pointer" title="Activer/Désactiver">
+                          <input 
+                            type="checkbox" 
+                            :checked="assignment.active !== false"
+                            @change="toggleAssignmentActive(assignment)"
+                            class="sr-only peer" 
+                          />
+                          <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                        </label>
+                        <!-- Delete Button -->
+                        <button 
+                          @click="removeAssignment(assignment.id)" 
+                          class="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                          title="Retirer"
+                        >
+                          <Trash2 class="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -295,13 +714,60 @@ const getRoleColor = (role) => {
       </div>
     </div>
 
-    <!-- Modal -->
+    <!-- User Modal -->
     <DialogModal :show="showModal" @close="closeModal">
       <template #title>
         {{ isEditing ? 'Modifier l\'Utilisateur' : 'Nouvel Utilisateur' }}
       </template>
       <template #content>
         <div class="space-y-4">
+          <!-- Password field when creating (hidden by default with show/copy/regenerate) -->
+          <div v-if="!isEditing" class="p-4 bg-gray-50 rounded-lg border border-gray-100 mb-4">
+            <InputLabel for="password" value="Mot de passe généré" class="text-green-700" />
+            <div class="flex gap-2 mt-1">
+              <div class="relative flex-1">
+                <TextInput 
+                  v-model="form.password" 
+                  id="password" 
+                  :type="showPassword ? 'text' : 'password'" 
+                  class="w-full font-mono pr-20 bg-white" 
+                  readonly 
+                />
+                <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  <button 
+                    type="button"
+                    @click="showPassword = !showPassword"
+                    class="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                    :title="showPassword ? 'Masquer' : 'Afficher'"
+                  >
+                    <EyeOff v-if="showPassword" class="h-5 w-5" />
+                    <Eye v-else class="h-5 w-5" />
+                  </button>
+                  <button 
+                    type="button"
+                    @click="copyPasswordToClipboard"
+                    class="p-1 text-gray-400 hover:text-green-600 transition-colors"
+                    :title="passwordCopied ? 'Copié!' : 'Copier'"
+                  >
+                    <Check v-if="passwordCopied" class="h-5 w-5 text-green-600" />
+                    <ContentCopy v-else class="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+              <button 
+                type="button"
+                @click="() => { const pw = generatePassword(); form.password = pw; form.password_confirmation = pw; passwordCopied = false; }"
+                class="p-2 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg text-gray-600 transition-colors"
+                title="Générer un nouveau mot de passe"
+              >
+                <Refresh class="h-5 w-5" />
+              </button>
+            </div>
+            <p v-if="passwordCopied" class="text-xs text-green-600 mt-1 font-medium">Mot de passe copié!</p>
+            <InputError :message="errors.password" />
+          </div>
+
+
           <div>
             <InputLabel for="name" value="Nom complet" />
             <TextInput v-model="form.name" id="name" class="w-full" placeholder="Ex: Jean Dupont" />
@@ -335,13 +801,14 @@ const getRoleColor = (role) => {
             <InputError :message="errors.role" />
           </div>
 
-          <div class="border-t border-gray-100 pt-4 mt-4">
+          <div v-if="isEditing" class="border-t border-gray-100 pt-4 mt-4">
             <h3 class="text-sm font-medium text-gray-900 mb-3">Sécurité</h3>
             <div class="space-y-4">
+              <!-- Password field when editing (hidden, optional) -->
               <div>
-                <InputLabel for="password" :value="isEditing ? 'Nouveau mot de passe (optionnel)' : 'Mot de passe'" />
+                <InputLabel for="password" value="Nouveau mot de passe (optionnel)" />
                 <TextInput v-model="form.password" id="password" type="password" class="w-full"
-                  :placeholder="isEditing ? 'Laisser vide pour ne pas changer' : 'Minimum 8 caractères'" />
+                  placeholder="Laisser vide pour ne pas changer" />
                 <InputError :message="errors.password" />
               </div>
 
@@ -360,6 +827,118 @@ const getRoleColor = (role) => {
         <PrimaryButton class="ml-3" @click="submit" :disabled="processing">
           {{ isEditing ? 'Mettre à jour' : 'Enregistrer' }}
         </PrimaryButton>
+      </template>
+    </DialogModal>
+
+    <!-- Assignment Modal -->
+    <DialogModal :show="showAssignmentModal" @close="closeAssignmentModal">
+      <template #title>{{ isEditingAssignment ? 'Modifier l\'Affectation' : 'Affecter une Gare' }}</template>
+      <template #content>
+        <div class="space-y-4">
+          <div>
+            <InputLabel for="station_id" value="Sélectionner une gare" />
+            <select
+              id="station_id"
+              v-model="assignmentForm.station_id"
+              class="w-full px-3 py-2 border border-orange-200 rounded-lg focus:border-green-500 focus:ring-green-500"
+              required
+            >
+              <option value="">Choisir une gare...</option>
+              <!-- When editing, show all stations (including current one) -->
+              <option 
+                v-for="station in (isEditingAssignment ? $props.stations : availableStations)" 
+                :key="station.id" 
+                :value="station.id"
+              >
+                {{ station.name }} - {{ station.city }}
+              </option>
+            </select>
+            <InputError :message="errors.station_id" />
+          </div>
+          
+          <div v-if="!isEditingAssignment && availableStations.length === 0" class="text-center py-4 text-gray-500">
+            <p>Toutes les gares sont déjà affectées à cet utilisateur.</p>
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <SecondaryButton @click="closeAssignmentModal">Annuler</SecondaryButton>
+        <PrimaryButton 
+          class="ml-3" 
+          @click="addAssignment" 
+          :disabled="processing || !assignmentForm.station_id"
+        >
+          {{ isEditingAssignment ? 'Mettre à jour' : 'Affecter' }}
+        </PrimaryButton>
+      </template>
+    </DialogModal>
+
+    <!-- Reset Password Modal -->
+    <DialogModal :show="showResetPasswordModal" @close="showResetPasswordModal = false">
+      <template #title>Générer un nouveau mot de passe</template>
+      <template #content>
+        <div class="space-y-4">
+          <div v-if="passwordSaved" class="p-4 bg-green-50 text-green-700 rounded-lg flex items-center gap-2 mb-4">
+            <Check class="h-5 w-5" />
+            <p>Le mot de passe a été mis à jour avec succès.</p>
+          </div>
+
+          <div class="p-4 bg-gray-50 rounded-lg border border-gray-100">
+            <h4 class="text-sm font-medium text-gray-700 mb-2">Nouveau mot de passe</h4>
+            <div class="flex gap-2">
+              <div class="relative flex-1">
+                <TextInput 
+                  v-model="newPassword" 
+                  type="text" 
+                  class="w-full font-mono pr-10 bg-white" 
+                  readonly 
+                />
+                <button 
+                  type="button"
+                  @click="copyNewPassword"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-green-600 transition-colors"
+                  :title="newPasswordCopied ? 'Copié!' : 'Copier'"
+                >
+                  <Check v-if="newPasswordCopied" class="h-5 w-5 text-green-600" />
+                  <ContentCopy v-else class="h-5 w-5" />
+                </button>
+              </div>
+              <button 
+                v-if="!passwordSaved"
+                type="button"
+                @click="newPassword = generatePassword(); newPasswordCopied = false;"
+                class="p-2 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg text-gray-600 transition-colors"
+                title="Générer un autre"
+              >
+                <Refresh class="h-5 w-5" />
+              </button>
+            </div>
+            <p v-if="newPasswordCopied" class="text-xs text-green-600 mt-1 font-medium">Mot de passe copié!</p>
+          </div>
+          
+          <div class="text-sm text-gray-500">
+            <p class="flex items-start gap-2" v-if="!passwordSaved">
+              <span class="text-orange-500 mt-0.5">⚠️</span>
+              En enregistrant, le mot de passe actuel de l'utilisateur sera remplacé par ce nouveau mot de passe. Assurez-vous de le communiquer à l'utilisateur.
+            </p>
+            <p v-else class="font-medium text-gray-700">
+              Veuillez copier le mot de passe ci-dessus avant de fermer cette fenêtre. Il ne sera plus visible après.
+            </p>
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <template v-if="!passwordSaved">
+          <SecondaryButton @click="showResetPasswordModal = false">Annuler</SecondaryButton>
+          <PrimaryButton class="ml-3" @click="saveNewPassword" :disabled="processing">
+            Enregistrer le nouveau mot de passe
+          </PrimaryButton>
+        </template>
+        <template v-else>
+          <PrimaryButton @click="showResetPasswordModal = false">
+            Fermer
+          </PrimaryButton>
+        </template>
       </template>
     </DialogModal>
   </MainNavLayout>

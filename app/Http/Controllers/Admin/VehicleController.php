@@ -15,7 +15,10 @@ class VehicleController extends Controller
      */
     public function index()
     {
-        $vehicles = Vehicle::with('vehicleType')->orderBy('identifier')->paginate(20);
+        $vehicles = Vehicle::with(['vehicleType', 'trips.route'])
+            ->withCount('trips')
+            ->orderBy('identifier')
+            ->paginate(50);
         $vehicleTypes = VehicleType::orderBy('name')->get(['id', 'name', 'seat_count']);
         return Inertia::render('Admin/Vehicles/Index', [
             'vehicles' => $vehicles,

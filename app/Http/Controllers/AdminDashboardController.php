@@ -99,7 +99,7 @@ class AdminDashboardController extends Controller
                 'vehicleOccupancy' => $vehicleOccupancy,
             ],
             'links' => [
-                ['label' => 'Stations', 'href' => '/admin/stations'],
+                ['label' => 'Gares', 'href' => '/admin/stations'],
                 ['label' => 'Routes', 'href' => '/admin/routes'],
                 ['label' => 'Vehicles', 'href' => '/admin/vehicles'],
                 ['label' => 'Trips', 'href' => '/admin/trips'],

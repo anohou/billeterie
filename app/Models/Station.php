@@ -45,4 +45,14 @@ class Station extends Model
     {
         return $this->hasMany(Route::class, 'destination_station_id');
     }
+
+    public function userAssignments()
+    {
+        return $this->hasMany(UserStationAssignment::class);
+    }
+
+    public function assignedUsers()
+    {
+        return $this->belongsToMany(User::class, 'user_station_assignments');
+    }
 }

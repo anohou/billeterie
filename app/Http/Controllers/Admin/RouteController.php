@@ -19,11 +19,11 @@ class RouteController extends Controller
             'originStation', 
             'destinationStation',
             'routeStopOrders.stop.station',
-            'routeFares.fromStop',
-            'routeFares.toStop'
+            'trips.vehicle'
         ])
+        ->withCount(['trips', 'routeStopOrders'])
         ->orderBy('name')
-        ->paginate(20);
+        ->paginate(50);
             
         $stations = Station::orderBy('name')->get(['id', 'name', 'city']);
         $stops = \App\Models\Stop::with('station')->orderBy('name')->get()->map(function ($stop) {
@@ -34,10 +34,14 @@ class RouteController extends Controller
             ];
         });
         
+        // Get all fares for frontend to compute matched fares per route
+        $fares = \App\Models\RouteFare::with(['fromStop', 'toStop'])->get();
+        
         return Inertia::render('Admin/Routes/Index', [ 
             'routes' => $routes,
             'stations' => $stations,
-            'stops' => $stops
+            'stops' => $stops,
+            'fares' => $fares
         ]);
     }
 

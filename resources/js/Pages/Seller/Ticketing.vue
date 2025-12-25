@@ -34,6 +34,7 @@ const props = defineProps({
 const page = usePage();
 
 // State
+const trips = ref([...props.trips]); // Reactive copy for real-time updates
 const selectedTripId = ref(null);
 const selectedFare = ref(null);
 const ticketQuantity = ref(1);
@@ -64,6 +65,21 @@ onMounted(() => {
   window.addEventListener('resize', () => {
     isMobile.value = window.innerWidth < 768;
   });
+
+  // Listen for real-time trip additions
+  if (page.props.auth.user.station_assignments) {
+    page.props.auth.user.station_assignments.forEach(assignment => {
+      Echo.private(`station.${assignment.station_id}`)
+          .listen('TripCreated', (e) => {
+              // Check if trip already exists
+              if (!trips.value.find(t => t.id === e.trip.id)) {
+                  // Add new trip to list
+                  trips.value.unshift(e.trip);
+                  // Optional: Show notification
+              }
+          });
+    });
+  }
 });
 const showTripSelectionModal = ref(false); // Modal for selecting a trip
 
@@ -107,13 +123,13 @@ const passengerFormErrors = ref({});
 
 // Computed
 const currentTrip = computed(() => {
-  return props.trips.find(trip => trip.id === selectedTripId.value);
+  return trips.value.find(trip => trip.id === selectedTripId.value);
 });
 
 const filteredTrips = computed(() => {
-  if (!searchQuery.value) return props.trips;
+  if (!searchQuery.value) return trips.value;
   const query = searchQuery.value.toLowerCase();
-  return props.trips.filter(trip => 
+  return trips.value.filter(trip => 
     trip.route?.name?.toLowerCase().includes(query) ||
     trip.vehicle?.identifier?.toLowerCase().includes(query)
   );
@@ -147,6 +163,11 @@ const canBookTickets = computed(() => {
          !processing.value;
 });
 
+// Watch for prop updates (e.g. inertia navigation)
+watch(() => props.trips, (newTrips) => {
+    trips.value = [...newTrips];
+});
+
 // Methods
 const selectTrip = (tripId) => {
   selectedTripId.value = tripId;
@@ -159,11 +180,20 @@ const selectTrip = (tripId) => {
 const fetchSeatMap = async () => {
   if (!selectedTripId.value) return;
   seatMapLoading.value = true;
+  
+  const params = {
+    _t: new Date().getTime()
+  };
+  
+  if (selectedFare.value) {
+    params.from_stop_id = selectedFare.value.from_stop_id;
+    params.to_stop_id = selectedFare.value.to_stop_id;
+  }
+  
   try {
     const response = await axios.get(route('trips.seatmap', { 
-      trip: selectedTripId.value,
-      _t: new Date().getTime() // Cache busting
-    }));
+      trip: selectedTripId.value
+    }), { params });
     seatMap.value = response.data;
   } catch (error) {
     console.error("Erreur lors de la récupération du plan de salle:", error);
@@ -456,6 +486,9 @@ watch(selectedTripId, (newVal) => {
 
 watch(selectedFare, (newVal) => {
     if(newVal) {
+        // Fetch specific seat map for this segment
+        fetchSeatMap();
+        
         fetchSeatSuggestions().then(() => {
             // Auto-select optimal seat if enabled
             if (autoSelectOptimal.value && suggestedSeats.value && suggestedSeats.value.length > 0) {
@@ -463,6 +496,8 @@ watch(selectedFare, (newVal) => {
             }
         });
     } else {
+        // Reload full seat map (conservative view)
+        fetchSeatMap();
         suggestedSeats.value = [];
     }
 });

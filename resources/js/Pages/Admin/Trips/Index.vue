@@ -15,6 +15,7 @@ import Trash2 from 'vue-material-design-icons/Delete.vue';
 import Pencil from 'vue-material-design-icons/Pencil.vue';
 import Plus from 'vue-material-design-icons/Plus.vue';
 import MapClock from 'vue-material-design-icons/MapClock.vue';
+import Ticket from 'vue-material-design-icons/Ticket.vue';
 
 const props = defineProps({
   trips: {
@@ -33,6 +34,9 @@ const props = defineProps({
 
 // State
 const search = ref('');
+const dateFilter = ref('');
+const departureFilter = ref('');
+const arrivalFilter = ref('');
 const selectedTrip = ref(null);
 const processing = ref(false);
 const errors = ref({});
@@ -43,19 +47,174 @@ const form = ref({
   route_id: '',
   vehicle_id: '',
   departure_at: '',
-  active: true
+  status: 'scheduled'
+});
+
+// Status options
+const statusOptions = [
+  { value: 'scheduled', label: 'Programmé', color: 'bg-blue-100 text-blue-800' },
+  { value: 'boarding', label: 'Embarquement', color: 'bg-yellow-100 text-yellow-800' },
+  { value: 'departed', label: 'Effectué', color: 'bg-purple-100 text-purple-800' },
+  { value: 'arrived', label: 'Arrivé', color: 'bg-green-100 text-green-800' },
+  { value: 'cancelled', label: 'Annulé', color: 'bg-red-100 text-red-800' }
+];
+
+// Unique departures and arrivals for filters
+const uniqueDepartures = computed(() => {
+  const stations = new Map();
+  props.routes.forEach(r => {
+    if (r.origin_station) {
+      stations.set(r.origin_station.id, r.origin_station);
+    }
+  });
+  return Array.from(stations.values());
+});
+
+const uniqueArrivals = computed(() => {
+  const stations = new Map();
+  props.routes.forEach(r => {
+    if (r.destination_station) {
+      stations.set(r.destination_station.id, r.destination_station);
+    }
+  });
+  return Array.from(stations.values());
 });
 
 // Computed
 const filteredTrips = computed(() => {
-  const trips = props.trips?.data || [];
-  if (!search.value) return trips;
+  let trips = props.trips?.data || [];
+  
+  // Filter by search
+  if (search.value) {
+    const searchTerm = search.value.toLowerCase();
+    trips = trips.filter(trip =>
+      trip.route?.name.toLowerCase().includes(searchTerm) ||
+      trip.vehicle?.identifier.toLowerCase().includes(searchTerm)
+    );
+  }
+  
+  // Filter by date
+  if (dateFilter.value) {
+    trips = trips.filter(trip => {
+      const tripDate = new Date(trip.departure_at).toISOString().split('T')[0];
+      return tripDate === dateFilter.value;
+    });
+  }
+  
+  // Filter by departure station
+  if (departureFilter.value) {
+    trips = trips.filter(trip => 
+      trip.route?.origin_station?.id === departureFilter.value
+    );
+  }
+  
+  // Filter by arrival station
+  if (arrivalFilter.value) {
+    trips = trips.filter(trip => 
+      trip.route?.destination_station?.id === arrivalFilter.value
+    );
+  }
+  
+  return trips;
+});
 
-  const searchTerm = search.value.toLowerCase();
-  return trips.filter(trip =>
-    trip.route?.name.toLowerCase().includes(searchTerm) ||
-    trip.vehicle?.identifier.toLowerCase().includes(searchTerm)
-  );
+// Get status display info - past trips cannot be "scheduled"
+const getStatusInfo = (status, departureAt) => {
+  // If departure is in the past and status is still scheduled, show as "Effectué"
+  if (departureAt && new Date(departureAt) < new Date() && status === 'scheduled') {
+    return { value: 'departed', label: 'Effectué', color: 'bg-purple-100 text-purple-800' };
+  }
+  return statusOptions.find(s => s.value === status) || { label: status, color: 'bg-gray-100 text-gray-800' };
+};
+
+// Calculate destination breakdown with percentage
+const destinationBreakdown = computed(() => {
+  if (!selectedTrip.value?.tickets) return [];
+  
+  const totalTickets = selectedTrip.value.tickets.length;
+  const breakdown = new Map();
+  selectedTrip.value.tickets.forEach(ticket => {
+    const destName = ticket.to_stop?.name || 'Inconnu';
+    const current = breakdown.get(destName) || { count: 0, revenue: 0 };
+    current.count++;
+    current.revenue += ticket.price || 0;
+    breakdown.set(destName, current);
+  });
+  
+  return Array.from(breakdown.entries()).map(([name, data]) => ({
+    name,
+    count: data.count,
+    revenue: data.revenue,
+    percentage: totalTickets > 0 ? Math.round((data.count / totalTickets) * 100) : 0
+  })).sort((a, b) => b.count - a.count);
+});
+
+// Ticket sort state
+const ticketSortBy = ref('distance'); // 'distance', 'destination', 'seat', 'price'
+const ticketSortAsc = ref(true);
+
+const toggleTicketSort = (field) => {
+  if (ticketSortBy.value === field) {
+    ticketSortAsc.value = !ticketSortAsc.value;
+  } else {
+    ticketSortBy.value = field;
+    ticketSortAsc.value = true;
+  }
+};
+
+// Tickets ordered by selected field
+const orderedTickets = computed(() => {
+  if (!selectedTrip.value?.tickets) return [];
+  
+  // Build stop index map from route (handle both snake_case and camelCase)
+  const stopIndexMap = new Map();
+  const stopOrders = selectedTrip.value.route?.route_stop_orders || selectedTrip.value.route?.routeStopOrders || [];
+  
+  stopOrders.forEach(order => {
+    // Map both possible field names
+    const stopId = order.stop_id || order.stopId;
+    const stopIndex = order.stop_index ?? order.stopIndex ?? 999;
+    if (stopId) {
+      stopIndexMap.set(stopId, stopIndex);
+    }
+  });
+  
+  return [...selectedTrip.value.tickets].sort((a, b) => {
+    let comparison = 0;
+    
+    switch (ticketSortBy.value) {
+      case 'distance':
+        // Try getting the stop_id from both the direct field and the loaded relation
+        const stopIdA = a.to_stop_id || a.toStopId || a.to_stop?.id;
+        const stopIdB = b.to_stop_id || b.toStopId || b.to_stop?.id;
+        const indexA = stopIndexMap.get(stopIdA) ?? 999;
+        const indexB = stopIndexMap.get(stopIdB) ?? 999;
+        comparison = indexA - indexB;
+        break;
+      case 'seat':
+        comparison = (a.seat_number ?? a.seatNumber ?? 0) - (b.seat_number ?? b.seatNumber ?? 0);
+        break;
+      case 'price':
+        comparison = (a.price || 0) - (b.price || 0);
+        break;
+    }
+    
+    return ticketSortAsc.value ? comparison : -comparison;
+  });
+});
+
+// Fill percentage
+const fillPercentage = computed(() => {
+  if (!selectedTrip.value?.vehicle?.seat_count) return 0;
+  const occupied = selectedTrip.value.occupied_seats || 0;
+  const total = selectedTrip.value.vehicle.seat_count;
+  return Math.round((occupied / total) * 100);
+});
+
+// Total revenue
+const totalRevenue = computed(() => {
+  if (!selectedTrip.value?.tickets) return 0;
+  return selectedTrip.value.tickets.reduce((sum, t) => sum + (t.price || 0), 0);
 });
 
 // Watchers
@@ -80,6 +239,26 @@ const formatDate = (dateString) => {
   });
 };
 
+const formatShortDate = (dateString) => {
+  if (!dateString) return '';
+  return new Date(dateString).toLocaleString('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const formatMoney = (amount) => {
+  return new Intl.NumberFormat('fr-FR').format(amount) + ' F';
+};
+
+const clearFilters = () => {
+  dateFilter.value = '';
+  departureFilter.value = '';
+  arrivalFilter.value = '';
+};
+
 const isSelected = (trip) => {
   if (!selectedTrip.value) return false;
   return selectedTrip.value.id === trip.id;
@@ -95,7 +274,7 @@ const openCreateModal = () => {
     route_id: '',
     vehicle_id: '',
     departure_at: '',
-    active: true
+    status: 'scheduled'
   };
   errors.value = {};
   showModal.value = true;
@@ -107,8 +286,8 @@ const openEditModal = () => {
   form.value = {
     route_id: selectedTrip.value.route_id,
     vehicle_id: selectedTrip.value.vehicle_id,
-    departure_at: selectedTrip.value.departure_at.slice(0, 16), // Format for datetime-local input
-    active: selectedTrip.value.active
+    departure_at: selectedTrip.value.departure_at.slice(0, 16),
+    status: selectedTrip.value.status || 'scheduled'
   };
   errors.value = {};
   showModal.value = true;
@@ -120,7 +299,7 @@ const closeModal = () => {
     route_id: '',
     vehicle_id: '',
     departure_at: '',
-    active: true
+    status: 'scheduled'
   };
   errors.value = {};
 };
@@ -154,9 +333,6 @@ const deleteTrip = (id) => {
         if (selectedTrip.value?.id === id) {
           selectedTrip.value = null;
         }
-      },
-      onError: (errorResponse) => {
-        console.error('Error deleting trip:', errorResponse);
       }
     });
   }
@@ -184,7 +360,7 @@ const deleteTrip = (id) => {
           <div class="bg-white rounded-lg border border-orange-200 shadow-sm flex flex-col h-full">
             <!-- List Header -->
             <div class="border-b border-orange-200 p-3 bg-gradient-to-r from-green-50 to-orange-50/30">
-              <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center justify-between gap-2 mb-2">
                 <div class="relative flex-1">
                   <input type="text" v-model="search" placeholder="Rechercher..."
                     class="w-full px-4 py-2 pl-10 pr-4 border border-orange-200 rounded-lg focus:outline-none focus:border-orange-400 text-sm" />
@@ -194,6 +370,41 @@ const deleteTrip = (id) => {
                   <Plus class="h-5 w-5" />
                 </button>
               </div>
+              
+              <!-- Filters -->
+              <div class="grid grid-cols-3 gap-2">
+                <input 
+                  type="date" 
+                  v-model="dateFilter"
+                  class="px-2 py-1 border border-orange-200 rounded text-xs focus:outline-none focus:border-orange-400"
+                  title="Filtrer par date"
+                />
+                <select 
+                  v-model="departureFilter"
+                  class="px-2 py-1 border border-orange-200 rounded text-xs focus:outline-none focus:border-orange-400"
+                >
+                  <option value="">Départ</option>
+                  <option v-for="station in uniqueDepartures" :key="station.id" :value="station.id">
+                    {{ station.name }}
+                  </option>
+                </select>
+                <select 
+                  v-model="arrivalFilter"
+                  class="px-2 py-1 border border-orange-200 rounded text-xs focus:outline-none focus:border-orange-400"
+                >
+                  <option value="">Arrivée</option>
+                  <option v-for="station in uniqueArrivals" :key="station.id" :value="station.id">
+                    {{ station.name }}
+                  </option>
+                </select>
+              </div>
+              <button 
+                v-if="dateFilter || departureFilter || arrivalFilter"
+                @click="clearFilters" 
+                class="mt-2 text-xs text-orange-600 hover:text-orange-800"
+              >
+                Effacer les filtres
+              </button>
             </div>
 
             <!-- List Content -->
@@ -211,17 +422,24 @@ const deleteTrip = (id) => {
                   }"
                 >
                   <div class="flex justify-between items-start">
-                    <div>
-                      <h3 :class="['font-semibold', isSelected(trip) ? 'text-green-800' : 'text-gray-800']">{{ trip.route?.name }}</h3>
-                      <p class="text-xs text-gray-500 mt-1">{{ formatDate(trip.departure_time) }}</p>
+                    <div class="flex-1 min-w-0">
+                      <h3 :class="['font-semibold truncate', isSelected(trip) ? 'text-green-800' : 'text-gray-800']">
+                        {{ trip.route?.name }}
+                      </h3>
+                      <p class="text-xs text-gray-500 mt-1">{{ formatShortDate(trip.departure_at) }}</p>
+                      <p class="text-xs text-gray-400">{{ trip.vehicle?.identifier }}</p>
                     </div>
-                    <span :class="[
-                      'px-2 py-0.5 rounded-full text-[10px] font-medium',
-                      trip.status === 'scheduled' ? 'bg-blue-100 text-blue-800' : 
-                      trip.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                    ]">
-                      {{ trip.status }}
-                    </span>
+                    <div class="flex flex-col items-end gap-1 shrink-0">
+                      <span :class="[
+                        'px-2 py-0.5 rounded-full text-[10px] font-medium',
+                        getStatusInfo(trip.status, trip.departure_at).color
+                      ]">
+                        {{ getStatusInfo(trip.status, trip.departure_at).label }}
+                      </span>
+                      <span class="text-xs text-gray-500">
+                        {{ trip.tickets_count || 0 }} tickets
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -246,7 +464,10 @@ const deleteTrip = (id) => {
             <div class="bg-white rounded-lg border border-orange-200 shadow-sm p-6">
               <!-- Header Row -->
               <div class="flex justify-between items-start mb-6">
-                <h2 class="text-2xl font-bold text-gray-800">Détails du Voyage</h2>
+                <div>
+                  <h2 class="text-2xl font-bold text-gray-800">{{ selectedTrip.route?.name }}</h2>
+                  <p class="text-sm text-gray-500">{{ formatDate(selectedTrip.departure_at) }}</p>
+                </div>
                 <div class="flex gap-2">
                   <button @click="openEditModal" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Modifier">
                     <Pencil class="h-5 w-5" />
@@ -257,37 +478,132 @@ const deleteTrip = (id) => {
                 </div>
               </div>
 
-              <!-- Details Row -->
-              <div class="grid grid-cols-12 gap-6 mb-6">
-                <div class="col-span-6">
-                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">ROUTE</span>
-                  <div class="text-xl font-bold text-gray-900 leading-tight">
-                    {{ selectedTrip.route?.name }}
-                  </div>
+              <!-- Stats Row -->
+              <div class="grid grid-cols-4 gap-4 mb-6">
+                <div class="bg-blue-50 rounded-lg p-3 text-center">
+                  <p class="text-2xl font-bold text-blue-700">{{ selectedTrip.tickets_count || 0 }}</p>
+                  <p class="text-xs text-blue-600">Tickets vendus</p>
                 </div>
+                <div class="bg-green-50 rounded-lg p-3 text-center">
+                  <p class="text-2xl font-bold text-green-700">{{ fillPercentage }}%</p>
+                  <p class="text-xs text-green-600">Remplissage</p>
+                </div>
+                <div class="bg-orange-50 rounded-lg p-3 text-center">
+                  <p class="text-2xl font-bold text-orange-700">{{ selectedTrip.vehicle?.seat_count || 0 }}</p>
+                  <p class="text-xs text-orange-600">Places totales</p>
+                </div>
+                <div class="bg-purple-50 rounded-lg p-3 text-center">
+                  <p class="text-2xl font-bold text-purple-700">{{ formatMoney(totalRevenue) }}</p>
+                  <p class="text-xs text-purple-600">Revenus</p>
+                </div>
+              </div>
+
+              <!-- Details Row -->
+              <div class="grid grid-cols-12 gap-4">
                 <div class="col-span-6">
-                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">VÉHICULE</span>
-                  <div class="text-xl font-bold text-gray-900 leading-tight">
+                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-1">VÉHICULE</span>
+                  <div class="text-lg font-medium text-gray-900">
                     {{ selectedTrip.vehicle?.identifier }}
                   </div>
                 </div>
                 <div class="col-span-6">
-                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">DÉPART</span>
-                  <div class="text-xl font-bold text-gray-900 leading-tight">
-                    {{ formatDate(selectedTrip.departure_at) }}
-                  </div>
+                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-1">STATUT</span>
+                  <span :class="[
+                    'inline-flex items-center px-3 py-1 rounded-full text-sm font-medium',
+                    getStatusInfo(selectedTrip.status, selectedTrip.departure_at).color
+                  ]">
+                    {{ getStatusInfo(selectedTrip.status, selectedTrip.departure_at).label }}
+                  </span>
                 </div>
-                <div class="col-span-6">
-                  <span class="text-xs text-gray-500 uppercase tracking-wider font-bold block mb-2">STATUT</span>
-                  <div>
-                    <span :class="[
-                      'inline-flex items-center px-3 py-1 rounded-full text-sm font-medium',
-                      selectedTrip.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    ]">
-                      {{ selectedTrip.active ? 'Actif' : 'Inactif' }}
+              </div>
+            </div>
+
+            <!-- Destination Breakdown -->
+            <div class="bg-white rounded-lg border border-orange-200 shadow-sm p-4">
+              <h3 class="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <Ticket class="h-5 w-5 text-green-600" />
+                Répartition par Destination
+              </h3>
+              
+              <div v-if="destinationBreakdown.length === 0" class="text-center py-4 text-gray-400">
+                Aucun ticket vendu
+              </div>
+              
+              <div v-else class="space-y-2">
+                <div 
+                  v-for="dest in destinationBreakdown" 
+                  :key="dest.name"
+                  class="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                >
+                  <div class="flex items-center gap-3 flex-1">
+                    <span class="font-medium text-gray-800">{{ dest.name }}</span>
+                    <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">
+                      {{ dest.count }}
                     </span>
+                    <span class="text-xs text-gray-500">({{ dest.percentage }}%)</span>
                   </div>
+                  <span class="text-sm text-gray-600 font-medium">{{ formatMoney(dest.revenue) }}</span>
                 </div>
+              </div>
+            </div>
+
+            <!-- Tickets List -->
+            <div class="bg-white rounded-lg border border-orange-200 shadow-sm p-4">
+              <h3 class="font-semibold text-gray-700 mb-3">Liste des Tickets</h3>
+              
+              <div v-if="!selectedTrip.tickets || selectedTrip.tickets.length === 0" class="text-center py-4 text-gray-400">
+                Aucun ticket vendu
+              </div>
+              
+              <div v-else class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">N°</th>
+                      <th 
+                        class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                        @click="toggleTicketSort('seat')"
+                      >
+                        <span class="flex items-center gap-1">
+                          Place
+                          <span :class="ticketSortBy === 'seat' ? 'text-green-600' : 'text-gray-300'">
+                            {{ ticketSortBy === 'seat' ? (ticketSortAsc ? '↑' : '↓') : '↕' }}
+                          </span>
+                        </span>
+                      </th>
+                      <th 
+                        class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                        @click="toggleTicketSort('distance')"
+                      >
+                        <span class="flex items-center gap-1">
+                          Destination
+                          <span :class="ticketSortBy === 'distance' ? 'text-green-600' : 'text-gray-300'">
+                            {{ ticketSortBy === 'distance' ? (ticketSortAsc ? '↑' : '↓') : '↕' }}
+                          </span>
+                        </span>
+                      </th>
+                      <th 
+                        class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                        @click="toggleTicketSort('price')"
+                      >
+                        <span class="flex items-center justify-end gap-1">
+                          Prix
+                          <span :class="ticketSortBy === 'price' ? 'text-green-600' : 'text-gray-300'">
+                            {{ ticketSortBy === 'price' ? (ticketSortAsc ? '↑' : '↓') : '↕' }}
+                          </span>
+                        </span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-100">
+                    <tr v-for="ticket in orderedTickets" :key="ticket.id" class="hover:bg-gray-50">
+                      <td class="px-3 py-2 font-mono text-xs">{{ ticket.ticket_number }}</td>
+                      <td class="px-3 py-2">{{ ticket.seat_number }}</td>
+                      <td class="px-3 py-2">{{ ticket.to_stop?.name || '-' }}</td>
+                      <td class="px-3 py-2 text-right font-medium">{{ formatMoney(ticket.price) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -312,11 +628,11 @@ const deleteTrip = (id) => {
             >
               <option value="">Sélectionner une route</option>
               <option
-                v-for="route in routes"
-                :key="route.id"
-                :value="route.id"
+                v-for="r in routes"
+                :key="r.id"
+                :value="r.id"
               >
-                {{ route.name }}
+                {{ r.name }} ({{ r.origin_station?.name }} → {{ r.destination_station?.name }})
               </option>
             </select>
             <InputError :message="errors.route_id" />
@@ -348,14 +664,18 @@ const deleteTrip = (id) => {
             <InputError :message="errors.departure_at" />
           </div>
 
-          <div class="flex items-center">
-            <input
-              id="active"
-              v-model="form.active"
-              type="checkbox"
-              class="rounded border-orange-200 text-green-600 shadow-sm focus:ring-green-500"
-            />
-            <InputLabel for="active" value="Actif" class="ml-2" />
+          <div>
+            <InputLabel for="status" value="Statut" />
+            <select
+              id="status"
+              v-model="form.status"
+              class="w-full px-3 py-1.5 border border-orange-200 rounded-lg focus:border-green-500 focus:ring-green-500 text-sm"
+            >
+              <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+            <InputError :message="errors.status" />
           </div>
         </div>
       </template>

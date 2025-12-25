@@ -38,22 +38,40 @@ class TicketController extends Controller
             'amount' => 'required|integer|min:0',
         ]);
 
-        $trip = Trip::with('vehicle')->findOrFail($validated['trip_id']);
+        $trip = Trip::with(['route.stops', 'tripSeatOccupancies.ticket'])->findOrFail($validated['trip_id']);
         
-        // Vérifier que les places sont disponibles
-        $occupiedSeats = TripSeatOccupancy::where('trip_id', $trip->id)
-            ->pluck('seat_number')
-            ->toArray();
+        // Determine segment indices
+        $stopsOnRoute = $trip->route->stops->pluck('id')->toArray();
+        $reqStartIndex = array_search($validated['from_stop_id'], $stopsOnRoute);
+        $reqEndIndex = array_search($validated['to_stop_id'], $stopsOnRoute);
+        
+        // Safety check for stops validity
+        if ($reqStartIndex === false || $reqEndIndex === false || $reqStartIndex >= $reqEndIndex) {
+            return response()->json(['message' => 'Invalid route segment.'], 422);
+        }
+
+        // Get occupied seats for this segment
+        $occupiedSeats = $trip->tripSeatOccupancies->filter(function ($occupancy) use ($stopsOnRoute, $reqStartIndex, $reqEndIndex) {
+            if (!$occupancy->ticket) return false;
+            
+            $ticketFromIdx = array_search($occupancy->ticket->from_stop_id, $stopsOnRoute);
+            $ticketToIdx = array_search($occupancy->ticket->to_stop_id, $stopsOnRoute);
+            
+            if ($ticketFromIdx === false || $ticketToIdx === false) return true;
+            
+            // Overlap check: Start1 < End2 && Start2 < End1
+            return ($ticketFromIdx < $reqEndIndex) && ($reqStartIndex < $ticketToIdx);
+        })->pluck('seat_number')->toArray();
 
         $conflictingSeats = array_intersect($validated['seats'], $occupiedSeats);
         if (!empty($conflictingSeats)) {
             if ($request->expectsJson()) {
                 return response()->json([
-                    'message' => 'Certaines places sont déjà occupées: ' . implode(', ', $conflictingSeats)
+                    'message' => 'Certaines places sont déjà occupées pour ce segment: ' . implode(', ', $conflictingSeats)
                 ], 422);
             }
             return back()->withErrors([
-                'general' => 'Certaines places sont déjà occupées: ' . implode(', ', $conflictingSeats)
+                'general' => 'Certaines places sont déjà occupées pour ce segment: ' . implode(', ', $conflictingSeats)
             ]);
         }
 
@@ -85,7 +103,7 @@ class TicketController extends Controller
                     'passenger_phone' => $validated['passenger_phone'] ?? '',
                     'price' => $validated['amount'] / count($validated['seats']), // Prix par place
                     'seller_id' => auth()->id(),
-                    'station_id' => auth()->user()->station_id ?? null,
+                    'station_id' => auth()->user()->stationAssignments()->where('active', true)->first()?->station_id,
                     'qr_code' => 'QR-' . strtoupper(Str::random(12)),
                 ]);
 

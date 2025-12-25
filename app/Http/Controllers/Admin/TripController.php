@@ -12,12 +12,36 @@ use Inertia\Inertia;
 class TripController extends Controller
 {
     /**
+     * Get routes accessible to the current user.
+     */
+    private function getAccessibleRoutesQuery()
+    {
+        $user = auth()->user();
+
+        if ($user->role === 'admin') {
+             return Route::query();
+        }
+
+        $stationIds = $user->stationAssignments()->pluck('station_id');
+
+        return Route::whereIn('origin_station_id', $stationIds);
+    }
+
+    /**
      * Display a listing of the resource.
      */
     public function index()
     {
-        $trips = Trip::with(['route', 'vehicle'])->orderBy('departure_at')->paginate(20);
-        $routes = Route::orderBy('name')->get(['id', 'name']);
+        $trips = Trip::with(['route.originStation', 'route.destinationStation', 'route.routeStopOrders', 'vehicle', 'tickets.toStop'])
+            ->withCount(['tickets', 'tripSeatOccupancies as occupied_seats'])
+            ->orderBy('departure_at', 'desc')
+            ->paginate(20);
+        
+        $routes = $this->getAccessibleRoutesQuery()
+            ->with(['originStation', 'destinationStation'])
+            ->orderBy('name')
+            ->get();
+            
         $vehicles = Vehicle::orderBy('identifier')->get(['id', 'identifier']);
         return Inertia::render('Admin/Trips/Index', [
             'trips' => $trips,
@@ -31,8 +55,12 @@ class TripController extends Controller
      */
     public function create()
     {
+        $routes = $this->getAccessibleRoutesQuery()
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
         return Inertia::render('Admin/Trips/Form', [
-            'routes' => Route::orderBy('name')->get(['id', 'name']),
+            'routes' => $routes,
             'vehicles' => Vehicle::orderBy('identifier')->get(['id', 'identifier'])
         ]);
     }
@@ -43,20 +71,31 @@ class TripController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'route_id' => 'required|uuid|exists:routes,id',
+            'route_id' => [
+                'required', 
+                'uuid', 
+                'exists:routes,id',
+                function ($attribute, $value, $fail) {
+                    // Check if user has access to this route
+                    $exists = $this->getAccessibleRoutesQuery()->where('id', $value)->exists();
+                    if (!$exists) {
+                        $fail('Vous n\'avez pas accès à cet itinéraire (station de départ non assignée).');
+                    }
+                }
+            ],
             'vehicle_id' => 'required|uuid|exists:vehicles,id',
             'departure_at' => 'required|date',
-            'status' => 'required|in:scheduled,boarding,departed,arrived,cancelled',
+            'status' => 'nullable|in:scheduled,boarding,departed,arrived,cancelled',
         ]);
         
         // Set default status if not provided
-        if (!isset($data['status'])) {
-            $data['status'] = 'scheduled';
-        }
+        $data['status'] = $data['status'] ?? 'scheduled';
         
         $trip = Trip::create($data);
 
-        return redirect()->route('seller.ticketing')->with('success', 'Voyage créé avec succès!');
+        \App\Events\TripCreated::dispatch($trip);
+
+        return redirect()->route('admin.trips.index')->with('success', 'Voyage créé avec succès!');
     }
 
     /**
