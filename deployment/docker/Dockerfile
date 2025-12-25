@@ -113,6 +113,11 @@ RUN apk add --no-cache --virtual .build-deps $PHPIZE_DEPS \
     && docker-php-ext-enable redis \
     && apk del .build-deps
 
+# Install and configure Nginx
+RUN apk add --no-cache nginx \
+    && mkdir -p /var/lib/nginx/tmp \
+    && mkdir -p /run/nginx
+
 # Install debugging tools
 RUN apk add --no-cache \
     busybox-extras \
@@ -156,6 +161,9 @@ RUN mkdir -p /etc/supervisor/conf.d && \
     chown -R sail:sail /etc/supervisor && \
     chmod -R 755 /etc/supervisor
 
+# Set nginx directory permissions (after sail user exists)
+RUN chown -R sail:sail /var/lib/nginx /var/log/nginx /run/nginx
+
 # Copy application code
 COPY --chown=sail:sail . /var/www/html
 
@@ -170,6 +178,23 @@ COPY --from=frontend-builder --chown=sail:sail /app/public/build /var/www/html/p
 # Ensure all files are owned by sail (including auto-generated from composer)
 RUN chown -R sail:sail /var/www/html && \
     chmod -R 755 /var/www/html/storage /var/www/html/bootstrap/cache
+
+# Copy nginx configuration
+COPY deployment/docker/nginx/default.conf /etc/nginx/http.d/default.conf
+
+# Configure PHP-FPM to listen on port 9001
+# Disable default www.conf and create our own
+RUN mv /usr/local/etc/php-fpm.d/www.conf /usr/local/etc/php-fpm.d/www.conf.disabled && \
+    echo "[www]" > /usr/local/etc/php-fpm.d/www.conf && \
+    echo "user = sail" >> /usr/local/etc/php-fpm.d/www.conf && \
+    echo "group = sail" >> /usr/local/etc/php-fpm.d/www.conf && \
+    echo "listen = 127.0.0.1:9001" >> /usr/local/etc/php-fpm.d/www.conf && \
+    echo "pm = dynamic" >> /usr/local/etc/php-fpm.d/www.conf && \
+    echo "pm.max_children = 50" >> /usr/local/etc/php-fpm.d/www.conf && \
+    echo "pm.start_servers = 5" >> /usr/local/etc/php-fpm.d/www.conf && \
+    echo "pm.min_spare_servers = 5" >> /usr/local/etc/php-fpm.d/www.conf && \
+    echo "pm.max_spare_servers = 35" >> /usr/local/etc/php-fpm.d/www.conf && \
+    rm -f /usr/local/etc/php-fpm.d/zz-docker.conf
 
 # Copy supervisord config
 COPY deployment/docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf

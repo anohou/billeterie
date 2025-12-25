@@ -517,17 +517,28 @@ generate_files() {
     if [[ "${CONF_APP_TYPE}" == "fullstack" ]]; then # Changed from CONF_PROJECT_TYPE to CONF_APP_TYPE for consistency
         print_info "Generating supervisord.conf..."
         if [[ "$DRY_RUN" == false ]]; then
-            if [[ -f "${template_dir}/supervisord.conf.template" ]]; then
-                process_template \
-                    "${template_dir}/supervisord.conf.template" \
-                    "${deploy_dir}/docker/supervisord.conf" \
-                    "${vars_args[@]}"
+            if [[ -f "${SCRIPT_DIR}/docker/supervisord.conf" ]]; then
+                cp "${SCRIPT_DIR}/docker/supervisord.conf" "${deploy_dir}/docker/supervisord.conf"
                 print_success "Created deployment/docker/supervisord.conf"
             else
-                print_warning "supervisord.conf template not found - skipping"
+                print_warning "supervisord.conf source not found - skipping"
             fi
         else
             print_warning "[DRY RUN] Would create deployment/docker/supervisord.conf"
+        fi
+
+        # Copy nginx configuration for fullstack
+        print_info "Generating nginx configuration..."
+        if [[ "$DRY_RUN" == false ]]; then
+            mkdir -p "${deploy_dir}/docker/nginx"
+            if [[ -f "${template_dir}/docker/nginx/default.conf.template" ]]; then
+                cp "${template_dir}/docker/nginx/default.conf.template" "${deploy_dir}/docker/nginx/default.conf"
+                print_success "Created deployment/docker/nginx/default.conf"
+            else
+                print_warning "nginx default.conf template not found - skipping"
+            fi
+        else
+            print_warning "[DRY RUN] Would create deployment/docker/nginx/default.conf"
         fi
     fi
 
