@@ -12,7 +12,11 @@ class TrustProxies extends Middleware
      *
      * @var array<int, string>|string|null
      */
-    protected $proxies = '*'; // Trust all proxies (Traefik)
+    protected $proxies = [
+        '10.0.0.0/8',     // Docker network range
+        '172.16.0.0/12',  // Docker network range
+        '192.168.0.0/16', // Docker network range
+    ];
 
     /**
      * The headers that should be used to detect proxies.
