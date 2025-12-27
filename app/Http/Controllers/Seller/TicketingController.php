@@ -31,31 +31,43 @@ class TicketingController extends Controller
         // Récupérer les voyages assignés à l'utilisateur
         if ($user->role === 'admin' || $user->role === 'supervisor') {
             // Les admins et superviseurs voient tout
-            $trips = Trip::with(['route.originStation', 'vehicle.vehicleType'])
+            $trips = Trip::with(['route.originStation', 'route.stops', 'route.routeStopOrders', 'vehicle.vehicleType'])
                 ->withCount('tripSeatOccupancies as occupied_seats')
-                ->where('departure_at', '>=', now()->startOfDay())
+                ->where('departure_at', '>=', now())
                 ->orderBy('departure_at')
                 ->get();
 
             $routeFares = RouteFare::with(['fromStop.station', 'toStop.station'])
                 ->get();
         } else {
-            // Les vendeurs ne voient que les voyages dont les routes partent de leurs stations assignées
+            // Les vendeurs voient les voyages selon le contrôle des ventes
             $assignedStationIds = UserStationAssignment::where('user_id', $user->id)
                 ->where('active', true)
                 ->pluck('station_id')
                 ->toArray();
+            
+            $hasActiveAssignment = count($assignedStationIds) > 0;
+            $assignedStation = $hasActiveAssignment 
+                ? \App\Models\Station::find($assignedStationIds[0])?->name 
+                : null;
 
-            // Récupérer les routes qui partent des stations assignées
-            $assignedRouteIds = Route::whereIn('origin_station_id', $assignedStationIds)
-                ->where('active', true)
-                ->pluck('id')
-                ->toArray();
+            // Récupérer toutes les routes liées aux stations assignées
+            $assignedRouteIds = Route::where(function($query) use ($assignedStationIds) {
+                $query->whereIn('origin_station_id', $assignedStationIds)
+                      ->orWhereHas('stops', function($q) use ($assignedStationIds) {
+                          $q->whereIn('station_id', $assignedStationIds);
+                      });
+            })
+            ->where('active', true)
+            ->pluck('id')
+            ->toArray();
 
-            $trips = Trip::with(['route.originStation', 'vehicle.vehicleType'])
+            // Récupérer TOUS les voyages passant par les stations assignées (pas de filtre sales_control ici)
+            // Le contrôle sales_control s'applique uniquement au moment de la vente
+            $trips = Trip::with(['route.originStation', 'route.stops', 'route.routeStopOrders', 'vehicle.vehicleType'])
                 ->withCount('tripSeatOccupancies as occupied_seats')
                 ->whereIn('route_id', $assignedRouteIds)
-                ->where('departure_at', '>=', now()->startOfDay())
+                ->where('departure_at', '>=', now())
                 ->orderBy('departure_at')
                 ->get();
 
@@ -65,10 +77,26 @@ class TicketingController extends Controller
                     $query->whereIn('station_id', $assignedStationIds);
                 })
                 ->get();
+            
+            $hasActiveAssignment = count($assignedStationIds) > 0;
         }
 
         // Récupérer toutes les routes et véhicules pour la création
-        $routes = \App\Models\Route::orderBy('name')->get(['id', 'name']);
+        if ($user->role === 'admin' || $user->role === 'supervisor') {
+            $routes = \App\Models\Route::orderBy('name')->get(['id', 'name']);
+        } else {
+            // Un vendeur ne peut créer des voyages que pour ses routes assignées (par station)
+            $routes = \App\Models\Route::where(function($query) use ($assignedStationIds) {
+                $query->whereIn('origin_station_id', $assignedStationIds)
+                      ->orWhereHas('stops', function($q) use ($assignedStationIds) {
+                          $q->whereIn('station_id', $assignedStationIds);
+                      });
+            })
+            ->where('active', true)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+        }
+
         $vehicles = \App\Models\Vehicle::with('vehicleType')->orderBy('identifier')->get(['id', 'identifier', 'seat_count', 'vehicle_type_id']);
 
         // Calculate real seat counts for each trip from seat_map
@@ -91,6 +119,8 @@ class TicketingController extends Controller
             'routeFares' => $routeFares,
             'routes' => $routes,
             'vehicles' => $vehicles,
+            'hasActiveAssignment' => $hasActiveAssignment ?? true,
+            'assignedStation' => $assignedStation ?? null,
         ];
     }
 

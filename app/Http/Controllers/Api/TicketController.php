@@ -47,7 +47,44 @@ class TicketController extends Controller
         
         // Safety check for stops validity
         if ($reqStartIndex === false || $reqEndIndex === false || $reqStartIndex >= $reqEndIndex) {
-            return response()->json(['message' => 'Invalid route segment.'], 422);
+            return response()->json(['message' => 'Segment d\'itinéraire invalide.'], 422);
+        }
+
+        // Restriction station vendeur
+        $user = auth()->user();
+        if ($user->role === 'seller') {
+            $assignedStationIds = $user->stationAssignments()->where('active', true)->pluck('station_id')->toArray();
+            $fromStop = \App\Models\Stop::findOrFail($validated['from_stop_id']);
+            
+            if (!in_array($fromStop->station_id, $assignedStationIds)) {
+                return response()->json([
+                    'message' => 'Vous n\'êtes pas autorisé à vendre des tickets au départ de cette station.'
+                ], 403);
+            }
+
+            // Vérification du contrôle des ventes pour les stations intermédiaires
+            $isAtOriginStation = in_array($trip->route->origin_station_id, $assignedStationIds);
+            
+            if (!$isAtOriginStation && $trip->isSalesClosed()) {
+                // Sur un voyage fermé, vérifier si les places demandées sont libérées à cette station
+                // (vendues pour un segment se terminant ici)
+                $seatsFreedAtThisStation = $trip->tripSeatOccupancies
+                    ->filter(function ($occupancy) use ($validated) {
+                        // Une place est "libérée" si le ticket se termine à notre station de départ
+                        return $occupancy->ticket && $occupancy->ticket->to_stop_id === $validated['from_stop_id'];
+                    })
+                    ->pluck('seat_number')
+                    ->toArray();
+                
+                $requestedSeats = $validated['seats'];
+                $seatsNotFreed = array_diff($requestedSeats, $seatsFreedAtThisStation);
+                
+                if (!empty($seatsNotFreed)) {
+                    return response()->json([
+                        'message' => 'Ce voyage est fermé aux ventes intermédiaires. Vous ne pouvez vendre que les places libérées à votre station (places: ' . implode(', ', $seatsFreedAtThisStation) . ').'
+                    ], 403);
+                }
+            }
         }
 
         // Get occupied seats for this segment

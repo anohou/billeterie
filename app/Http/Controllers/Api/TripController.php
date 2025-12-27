@@ -19,8 +19,28 @@ class TripController extends Controller
 
     public function index(Request $request)
     {
-        // Basic index method, can be expanded with filtering
-        return Trip::with(['route', 'vehicle'])->get();
+        $user = auth()->user();
+        $query = Trip::with(['route.originStation', 'vehicle.vehicleType'])
+            ->where('departure_at', '>=', now())
+            ->orderBy('departure_at');
+
+        if ($user && $user->role === 'seller') {
+            $assignedStationIds = \App\Models\UserStationAssignment::where('user_id', $user->id)
+                ->where('active', true)
+                ->pluck('station_id')
+                ->toArray();
+
+            // Filtrer par route - tous les voyages passant par les stations assignées sont visibles
+            // Le contrôle sales_control s'applique uniquement au moment de la vente
+            $query->whereHas('route', function($q) use ($assignedStationIds) {
+                $q->whereIn('origin_station_id', $assignedStationIds)
+                  ->orWhereHas('stops', function($sq) use ($assignedStationIds) {
+                      $sq->whereIn('station_id', $assignedStationIds);
+                  });
+            });
+        }
+
+        return $query->get();
     }
 
     public function suggestSeats(Request $request, Trip $trip)

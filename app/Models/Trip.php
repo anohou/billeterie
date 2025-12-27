@@ -13,11 +13,41 @@ class Trip extends Model
     public $incrementing = false;
     protected $keyType = 'string';
 
-    protected $fillable = ['route_id','vehicle_id','departure_at','status','booking_type'];
+    protected $fillable = ['route_id','vehicle_id','departure_at','status','booking_type','sales_control'];
 
     protected $casts = [
         'departure_at' => 'datetime',
     ];
+
+    protected $appends = ['total_seats', 'available_seats'];
+
+    public function getTotalSeatsAttribute()
+    {
+        return $this->vehicle?->vehicleType?->seat_count ?? 0;
+    }
+
+    public function getAvailableSeatsAttribute()
+    {
+        $total = $this->total_seats;
+        $occupied = $this->tickets()->where('status', '!=', 'cancelled')->count();
+        return max(0, $total - $occupied);
+    }
+
+    /**
+     * Vérifie si le voyage autorise les ventes depuis les stations intermédiaires
+     */
+    public function isSalesOpen(): bool
+    {
+        return $this->sales_control === 'open';
+    }
+
+    /**
+     * Vérifie si le voyage est réservé à la station d'origine uniquement
+     */
+    public function isSalesClosed(): bool
+    {
+        return $this->sales_control === 'closed' || $this->sales_control === null;
+    }
 
     /**
      * Vérifie si le voyage utilise le placement intelligent des sièges

@@ -12,13 +12,57 @@ class SellerDashboardController extends Controller
     public function index()
     {
         $user = request()->user();
-        $routeIds = $user->routeAssignments()->pluck('route_id');
-        $trips = Trip::whereIn('route_id', $routeIds)
-            ->orderBy('departure_at','asc')
-            ->limit(10)
-            ->get(['id','route_id','vehicle_id','departure_at','status']);
+        
+        if ($user->role === 'admin' || $user->role === 'supervisor') {
+            $trips = Trip::with(['route', 'vehicle.vehicleType'])
+                ->orderBy('departure_at','asc')
+                ->limit(10)
+                ->get();
+            $routes = BusRoute::all();
+        } else {
+            // Unifier avec la logique de TicketingController: Basé sur les stations assignées
+            $assignedStationIds = \App\Models\UserStationAssignment::where('user_id', $user->id)
+                ->where('active', true)
+                ->pluck('station_id')
+                ->toArray();
+
+            $routes = BusRoute::where(function($query) use ($assignedStationIds) {
+                $query->whereIn('origin_station_id', $assignedStationIds)
+                      ->orWhereHas('stops', function($q) use ($assignedStationIds) {
+                          $q->whereIn('station_id', $assignedStationIds);
+                      });
+            })
+            ->where('active', true)
+            ->get();
+            
+            $routeIds = $routes->pluck('id');
+
+            $trips = Trip::with(['route', 'vehicle.vehicleType'])
+                ->whereIn('route_id', $routeIds)
+                ->where('departure_at', '>=', now())
+                ->orderBy('departure_at','asc')
+                ->limit(10)
+                ->get();
+            
+            $hasActiveAssignment = count($assignedStationIds) > 0;
+            $assignedStation = $hasActiveAssignment 
+                ? \App\Models\Station::find($assignedStationIds[0])?->name 
+                : null;
+        }
+        $vehicles = \App\Models\Vehicle::with('vehicleType')->get();
+        
+        $todaySales = \App\Models\Ticket::where('seller_id', $user->id)
+            ->whereDate('created_at', now()->today())
+            ->where('status', '!=', 'cancelled')
+            ->sum('price');
+
         return Inertia::render('Dashboards/Seller', [
             'trips' => $trips,
+            'routes' => $routes,
+            'vehicles' => $vehicles,
+            'todaySales' => $todaySales,
+            'hasActiveAssignment' => $hasActiveAssignment ?? true,
+            'assignedStation' => $assignedStation ?? null,
         ]);
     }
 }
